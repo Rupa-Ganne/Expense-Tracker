@@ -2,22 +2,41 @@ import streamlit as st
 import pyodbc
 import pandas as pd
 import math
-from html import escape
 from datetime import date
+from html import escape
+from textwrap import dedent
 
 # ============================================================
 # PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
-    page_title="Expense Tracker",
-    page_icon="ET",
+    page_title="ExpenseAI",
+    page_icon="EA",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # ============================================================
-# SQL SERVER CONNECTION
+# IMPORTANT:
+# HTML IS ALWAYS DEDENTED + STRIPPED BEFORE MARKDOWN.
+# THIS PREVENTS STREAMLIT FROM SHOWING HTML AS CODE.
+# ============================================================
+
+def render(html_code):
+    clean_html = dedent(str(html_code)).strip()
+    st.html(clean_html)
+
+
+def money(value):
+    try:
+        return f"Rs {float(value):,.2f}"
+    except (TypeError, ValueError):
+        return "Rs 0.00"
+
+
+# ============================================================
+# DATABASE
 # ============================================================
 
 CONNECTION_STRING = (
@@ -32,10 +51,12 @@ def get_connection():
     return pyodbc.connect(CONNECTION_STRING)
 
 
-def load_expenses():
+def load_data():
+
     connection = get_connection()
 
     try:
+
         query = """
         SELECT
             EXPENSEID,
@@ -44,16 +65,21 @@ def load_expenses():
             DESCRIPTIONTYPE,
             AMOUNT,
             PAYMENTMETHOD
-        FROM EXPENSES
+        FROM Expenses
         ORDER BY EXPENSEDATE DESC, EXPENSEID DESC
         """
 
-        data = pd.read_sql(query, connection)
+        data = pd.read_sql(
+            query,
+            connection
+        )
 
     finally:
+
         connection.close()
 
     if not data.empty:
+
         data["EXPENSEDATE"] = pd.to_datetime(
             data["EXPENSEDATE"],
             errors="coerce"
@@ -64,453 +90,122 @@ def load_expenses():
             errors="coerce"
         ).fillna(0)
 
+        data["CATEGORY"] = (
+            data["CATEGORY"]
+            .fillna("Other")
+            .astype(str)
+        )
+
+        data["DESCRIPTIONTYPE"] = (
+            data["DESCRIPTIONTYPE"]
+            .fillna("Expense")
+            .astype(str)
+        )
+
+        data["PAYMENTMETHOD"] = (
+            data["PAYMENTMETHOD"]
+            .fillna("Other")
+            .astype(str)
+        )
+
     return data
 
 
-def add_expense(expense_date, category, description, amount, payment):
+def insert_expense(
+    expense_date,
+    category,
+    description,
+    amount,
+    payment_method
+):
+
     connection = get_connection()
 
     try:
+
         cursor = connection.cursor()
 
-        query = """
-        INSERT INTO EXPENSES
-        (
-            EXPENSEDATE,
-            CATEGORY,
-            DESCRIPTIONTYPE,
-            AMOUNT,
-            PAYMENTMETHOD
-        )
-        VALUES (?, ?, ?, ?, ?)
-        """
-
         cursor.execute(
-            query,
-            expense_date,
-            category,
-            description,
-            amount,
-            payment
+            """
+            INSERT INTO Expenses
+            (
+                EXPENSEDATE,
+                CATEGORY,
+                DESCRIPTIONTYPE,
+                AMOUNT,
+                PAYMENTMETHOD
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                expense_date,
+                category,
+                description,
+                amount,
+                payment_method
+            )
         )
 
         connection.commit()
+
         cursor.close()
 
     finally:
+
         connection.close()
 
 
 def delete_expense(expense_id):
+
     connection = get_connection()
 
     try:
+
         cursor = connection.cursor()
 
         cursor.execute(
-            "DELETE FROM EXPENSES WHERE EXPENSEID = ?",
-            expense_id
+            """
+            DELETE FROM Expenses
+            WHERE EXPENSEID = ?
+            """,
+            (expense_id,)
         )
 
         connection.commit()
+
         cursor.close()
 
     finally:
+
         connection.close()
 
 
 # ============================================================
-# GLOBAL CSS
-# ============================================================
-
-st.html("""
-<style>
-
-@import url(
-'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap'
-);
-
-/* ==========================================================
-   GLOBAL
-   ========================================================== */
-
-html,
-body,
-[data-testid="stAppViewContainer"] {
-
-    font-family:
-        Inter,
-        Segoe UI,
-        Arial,
-        sans-serif !important;
-
-}
-
-[data-testid="stAppViewContainer"] {
-
-    background:
-        radial-gradient(
-            circle at 85% 10%,
-            rgba(23,105,255,0.08),
-            transparent 28%
-        ),
-        linear-gradient(
-            135deg,
-            #f8fbff 0%,
-            #eef5ff 100%
-        );
-
-}
-
-[data-testid="stHeader"] {
-
-    background:transparent !important;
-
-}
-
-[data-testid="stToolbar"] {
-
-    background:transparent !important;
-
-}
-
-#MainMenu {
-
-    visibility:hidden;
-
-}
-
-footer {
-
-    visibility:hidden;
-
-}
-
-
-/* ==========================================================
-   SIDEBAR
-   ========================================================== */
-
-[data-testid="stSidebar"] {
-
-    background:
-        linear-gradient(
-            180deg,
-            #ffffff 0%,
-            #f5f9ff 100%
-        ) !important;
-
-    border-right:
-        1px solid #dce8fa !important;
-
-}
-
-[data-testid="stSidebar"] > div:first-child {
-
-    padding-top:18px;
-
-}
-
-[data-testid="stSidebar"] [data-testid="stRadio"] {
-
-    margin-top:5px;
-
-}
-
-[data-testid="stSidebar"] label {
-
-    font-family:Inter,sans-serif !important;
-
-}
-
-[data-testid="stSidebar"] [role="radiogroup"] {
-
-    gap:7px !important;
-
-}
-
-[data-testid="stSidebar"] [role="radiogroup"] label {
-
-    border-radius:13px !important;
-
-    padding:
-        10px
-        12px !important;
-
-    transition:
-        all 0.25s ease !important;
-
-}
-
-[data-testid="stSidebar"] [role="radiogroup"] label:hover {
-
-    background:#edf4ff !important;
-
-    transform:
-        translateX(3px);
-
-}
-
-
-/* ==========================================================
-   BUTTONS
-   ========================================================== */
-
-.stButton > button {
-
-    border-radius:12px !important;
-
-    border:
-        1px solid #d8e6fb !important;
-
-    background:
-        linear-gradient(
-            135deg,
-            #ffffff,
-            #f3f7ff
-        ) !important;
-
-    color:#123b76 !important;
-
-    font-weight:700 !important;
-
-    transition:
-        all 0.25s ease !important;
-
-    box-shadow:
-        0 5px 18px
-        rgba(23,105,255,0.07) !important;
-
-}
-
-.stButton > button:hover {
-
-    border-color:#1769ff !important;
-
-    color:#1769ff !important;
-
-    transform:
-        translateY(-2px);
-
-    box-shadow:
-        0 10px 25px
-        rgba(23,105,255,0.14) !important;
-
-}
-
-
-/* ==========================================================
-   INPUTS
-   ========================================================== */
-
-[data-baseweb="input"],
-[data-baseweb="select"],
-[data-baseweb="textarea"] {
-
-    border-radius:12px !important;
-
-}
-
-
-/* ==========================================================
-   ANIMATIONS
-   ========================================================== */
-
-@keyframes fadeUp {
-
-    0% {
-
-        opacity:0;
-
-        transform:
-            translateY(22px);
-
-    }
-
-    100% {
-
-        opacity:1;
-
-        transform:
-            translateY(0);
-
-    }
-
-}
-
-@keyframes fadeIn {
-
-    0% {
-
-        opacity:0;
-
-    }
-
-    100% {
-
-        opacity:1;
-
-    }
-
-}
-
-@keyframes float {
-
-    0%,100% {
-
-        transform:
-            translateY(0);
-
-    }
-
-    50% {
-
-        transform:
-            translateY(-9px);
-
-    }
-
-}
-
-@keyframes pulse {
-
-    0% {
-
-        box-shadow:
-            0 0 0 0
-            rgba(32,189,117,0.35);
-
-    }
-
-    70% {
-
-        box-shadow:
-            0 0 0 8px
-            rgba(32,189,117,0);
-
-    }
-
-    100% {
-
-        box-shadow:
-            0 0 0 0
-            rgba(32,189,117,0);
-
-    }
-
-}
-
-@keyframes barGrow {
-
-    from {
-
-        transform:
-            scaleX(0);
-
-    }
-
-    to {
-
-        transform:
-            scaleX(1);
-
-    }
-
-}
-
-@keyframes donutDraw {
-
-    from {
-
-        stroke-dashoffset:
-            var(--start);
-
-    }
-
-    to {
-
-        stroke-dashoffset:
-            var(--end);
-
-    }
-
-}
-
-@keyframes lineDraw {
-
-    from {
-
-        stroke-dashoffset:1;
-
-    }
-
-    to {
-
-        stroke-dashoffset:0;
-
-    }
-
-}
-
-@keyframes shimmer {
-
-    0% {
-
-        transform:
-            translateX(-120%);
-
-    }
-
-    100% {
-
-        transform:
-            translateX(120%);
-
-    }
-
-}
-
-</style>
-""")
-
-
-# ============================================================
-# LOAD DATA
+# LOAD DATABASE
 # ============================================================
 
 try:
 
-    df = load_expenses()
+    df = load_data()
 
-except Exception as error:
+except Exception as e:
 
-    st.error(
-        "Unable to connect to SQL Server. "
-        "Please check your SQL Server connection."
-    )
-
+    st.error("SQL Server connection failed.")
+    st.code(str(e))
     st.stop()
 
 
 # ============================================================
-# DATA PREPARATION
+# DATA CALCULATIONS
 # ============================================================
 
-if df.empty:
+if not df.empty:
 
-    total_expense = 0
-    transaction_count = 0
-    average_expense = 0
-    top_category = "No Data"
+    total_expense = float(
+        df["AMOUNT"].sum()
+    )
 
-    category_totals = pd.Series(dtype=float)
-    payment_totals = pd.Series(dtype=float)
-
-else:
-
-    total_expense = float(df["AMOUNT"].sum())
-
-    transaction_count = int(len(df))
+    transaction_count = len(df)
 
     average_expense = float(
         df["AMOUNT"].mean()
@@ -532,393 +227,2606 @@ else:
         )
     )
 
-    if not category_totals.empty:
+    top_category = (
+        category_totals.index[0]
+        if not category_totals.empty
+        else "None"
+    )
 
-        top_category = category_totals.index[0]
+else:
 
-    else:
-
-        top_category = "No Data"
-
-
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
-
-def money(value):
-
-    return f"₹{float(value):,.2f}"
-
-
-def safe_text(value):
-
-    return escape(str(value))
-
-
-def render_animated_bar_chart(series, title, badge="BAR", height=360):
-    """Render a CSS-animated horizontal bar chart from a pandas Series."""
-    if series is None or series.empty:
-        st.info("No data available for this chart.")
-        return
-
-    series = series.sort_values(ascending=True)
-    max_value = float(series.max()) if not series.empty else 0.0
-
-    rows = ""
-
-    for index, (label, value) in enumerate(series.items()):
-        value = float(value)
-        width = (value / max_value * 100.0) if max_value > 0 else 0.0
-
-        rows += f"""
-        <div class="animated-bar-row" style="animation-delay:{index * 0.08}s;">
-            <div class="animated-bar-label">
-                <span>{safe_text(label)}</span>
-                <strong>{money(value)}</strong>
-            </div>
-
-            <div class="animated-bar-track">
-                <div class="animated-bar-fill"
-                     style="width:{width:.2f}%; animation-delay:{index * 0.12}s;">
-                </div>
-            </div>
-        </div>
-        """
-
-    st.html(f"""
-    <style>
-        @keyframes expenseBarGrow {{
-            from {{
-                transform: scaleX(0);
-                opacity: 0.25;
-            }}
-            to {{
-                transform: scaleX(1);
-                opacity: 1;
-            }}
-        }}
-
-        @keyframes expenseRowIn {{
-            from {{
-                opacity: 0;
-                transform: translateY(10px);
-            }}
-            to {{
-                opacity: 1;
-                transform: translateY(0);
-            }}
-        }}
-
-        .animated-bar-card {{
-            min-height:{height}px;
-            padding:26px;
-            border-radius:20px;
-            background:#ffffff;
-            border:1px solid #dce9fa;
-            box-shadow:0 12px 35px rgba(23,105,255,0.07);
-            animation:fadeUp 0.65s ease-out;
-        }}
-
-        .animated-bar-title {{
-            display:flex;
-            align-items:center;
-            gap:12px;
-            margin-bottom:28px;
-            color:#092f6d;
-            font-size:18px;
-            font-weight:850;
-        }}
-
-        .animated-bar-badge {{
-            width:36px;
-            height:36px;
-            border-radius:11px;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            color:#1769ff;
-            background:#edf4ff;
-            font-size:10px;
-            font-weight:900;
-        }}
-
-        .animated-bar-row {{
-            margin-bottom:19px;
-            animation:expenseRowIn 0.55s ease-out both;
-        }}
-
-        .animated-bar-label {{
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
-            margin-bottom:8px;
-            color:#47678f;
-            font-size:12px;
-            font-weight:700;
-        }}
-
-        .animated-bar-label strong {{
-            color:#092f6d;
-            font-size:12px;
-        }}
-
-        .animated-bar-track {{
-            width:100%;
-            height:14px;
-            overflow:hidden;
-            border-radius:999px;
-            background:#eaf1fb;
-        }}
-
-        .animated-bar-fill {{
-            height:100%;
-            min-width:2px;
-            border-radius:999px;
-            transform-origin:left center;
-            background:linear-gradient(90deg,#1769ff,#65b1ff);
-            box-shadow:0 4px 12px rgba(23,105,255,0.20);
-            animation:expenseBarGrow 1.25s cubic-bezier(.2,.8,.2,1) both;
-        }}
-
-        .animated-bar-row:hover .animated-bar-fill {{
-            filter:brightness(1.06);
-            box-shadow:0 6px 18px rgba(23,105,255,0.30);
-        }}
-    </style>
-
-    <div class="animated-bar-card">
-        <div class="animated-bar-title">
-            <div class="animated-bar-badge">{safe_text(badge)}</div>
-            <div>{safe_text(title)}</div>
-        </div>
-        {rows}
-    </div>
-    """)
+    total_expense = 0
+    transaction_count = 0
+    average_expense = 0
+    category_totals = pd.Series(dtype=float)
+    payment_totals = pd.Series(dtype=float)
+    top_category = "None"
 
 
 # ============================================================
-# SIDEBAR BRAND
+# CSS
 # ============================================================
 
-with st.sidebar:
+st.markdown(
+    """
+<style>
 
-    # --------------------------------------------------------
-    # BRAND
-    # --------------------------------------------------------
+/* ==========================================================
+   ROOT
+   ========================================================== */
 
-    st.html("""
-    <div style="
+:root {
+
+    --primary: #1769ff;
+    --primary-dark: #0c3f91;
+    --primary-light: #eaf3ff;
+
+    --navy: #092b67;
+    --text: #102d63;
+    --muted: #7183a4;
+
+    --green: #12b878;
+    --purple: #7258f6;
+    --pink: #e94fba;
+    --cyan: #21b7d9;
+    --orange: #ff9f43;
+
+    --border: #dfeafb;
+    --background: #f6f9ff;
+
+    --shadow:
+        0 8px 30px rgba(38, 93, 180, 0.08);
+
+    --shadow-hover:
+        0 18px 45px rgba(38, 93, 180, 0.15);
+}
+
+
+/* ==========================================================
+   MAIN STREAMLIT AREA
+   ========================================================== */
+
+html,
+body {
+
+    margin: 0 !important;
+    padding: 0 !important;
+
+    background:
+        #f6f9ff !important;
+}
+
+
+[data-testid="stAppViewContainer"] {
+
+    background:
+        linear-gradient(
+            135deg,
+            #f9fbff 0%,
+            #f3f8ff 48%,
+            #f8fbff 100%
+        ) !important;
+}
+
+
+[data-testid="stMain"] {
+
+    background:
+        transparent !important;
+}
+
+
+.block-container {
+
+    width: 100% !important;
+
+    max-width: 100% !important;
+
+    padding-top: 18px !important;
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+    padding-bottom: 45px !important;
+}
+
+
+/* ==========================================================
+   HIDE DEFAULT STREAMLIT ELEMENTS
+   ========================================================== */
+
+#MainMenu {
+    visibility: hidden;
+}
+
+footer {
+    visibility: hidden;
+}
+
+[data-testid="stHeader"] {
+
+    background:
+        transparent !important;
+
+    height: 0 !important;
+}
+
+
+/* ==========================================================
+   SIDEBAR
+   ========================================================== */
+
+[data-testid="stSidebar"] {
+
+    width: 255px !important;
+
+    min-width: 255px !important;
+
+    background:
+        #ffffff !important;
+
+    border-right:
+        1px solid #e3ecfa !important;
+
+    box-shadow:
+        6px 0 30px rgba(29, 79, 155, 0.04);
+}
+
+
+[data-testid="stSidebar"] > div:first-child {
+
+    background:
+        #ffffff !important;
+
+    padding-top:
+        15px !important;
+}
+
+
+[data-testid="stSidebar"] * {
+
+    font-family:
+        Inter,
+        Segoe UI,
+        sans-serif;
+}
+
+
+/* ==========================================================
+   BRAND
+   ========================================================== */
+
+.brand {
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    gap:
+        13px;
+
+    padding:
+        5px 8px 24px 8px;
+}
+
+
+.brand-logo {
+
+    width:
+        43px;
+
+    height:
+        43px;
+
+    border-radius:
+        12px;
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        center;
+
+    color:
+        white;
+
+    font-size:
+        12px;
+
+    font-weight:
+        900;
+
+    background:
+        linear-gradient(
+            145deg,
+            #4d9aff,
+            #0758df
+        );
+
+    box-shadow:
+        0 10px 22px
+        rgba(23,105,255,.25);
+
+    animation:
+        logoFloat 3.5s ease-in-out infinite;
+}
+
+
+.brand-name {
+
+    color:
+        #082d6d;
+
+    font-size:
+        20px;
+
+    font-weight:
+        900;
+
+    letter-spacing:
+        -.7px;
+}
+
+
+.brand-sub {
+
+    margin-top:
+        2px;
+
+    color:
+        #7890b5;
+
+    font-size:
+        7px;
+
+    font-weight:
+        600;
+
+    letter-spacing:
+        .3px;
+}
+
+
+/* ==========================================================
+   SIDEBAR RADIO
+   ========================================================== */
+
+[data-testid="stSidebar"]
+[data-testid="stRadio"] > div {
+
+    gap:
+        5px !important;
+}
+
+
+[data-testid="stSidebar"]
+[data-testid="stRadio"] label {
+
+    border-radius:
+        10px !important;
+
+    padding:
+        9px 11px !important;
+
+    color:
+        #153a78 !important;
+
+    font-size:
+        13px !important;
+
+    font-weight:
+        600 !important;
+
+    transition:
+        all .25s ease !important;
+}
+
+
+[data-testid="stSidebar"]
+[data-testid="stRadio"] label:hover {
+
+    background:
+        #eef5ff !important;
+
+    transform:
+        translateX(3px);
+}
+
+
+/* ==========================================================
+   SIDEBAR BOTTOM CARD
+   ========================================================== */
+
+.sidebar-bottom {
+
+    position:
+        relative;
+
+    overflow:
+        hidden;
+
+    margin:
+        30px 4px 0 4px;
+
+    min-height:
+        150px;
+
+    padding:
+        20px;
+
+    border-radius:
+        16px;
+
+    background:
+        linear-gradient(
+            145deg,
+            #f1f8ff,
+            #e5f0ff
+        );
+
+    border:
+        1px solid #dceaff;
+}
+
+
+.sidebar-bottom-title {
+
+    max-width:
+        135px;
+
+    color:
+        #1769ff;
+
+    font-size:
+        12px;
+
+    line-height:
+        1.7;
+
+    font-weight:
+        700;
+}
+
+
+.sidebar-wave {
+
+    position:
+        absolute;
+
+    left:
+        -20px;
+
+    right:
+        -20px;
+
+    bottom:
+        -30px;
+
+    height:
+        80px;
+
+    border-radius:
+        50%;
+
+    background:
+        linear-gradient(
+            180deg,
+            #b9d8ff,
+            #1769ff
+        );
+
+    transform:
+        rotate(-4deg);
+
+    animation:
+        waveMove 5s ease-in-out infinite;
+}
+
+
+/* ==========================================================
+   TOP HEADER
+   ========================================================== */
+
+.top-header {
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        space-between;
+
+    margin:
+        0 0 20px 0;
+
+    padding:
+        0 2px;
+
+    animation:
+        fadeDown .65s ease both;
+}
+
+
+.greeting {
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    gap:
+        14px;
+}
+
+
+.greeting-icon {
+
+    width:
+        48px;
+
+    height:
+        48px;
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        center;
+
+    border-radius:
+        50%;
+
+    background:
+        #eef5ff;
+
+    font-size:
+        25px;
+
+    animation:
+        handWave 3s ease-in-out infinite;
+}
+
+
+.greeting-title {
+
+    color:
+        #092d6c;
+
+    font-size:
+        22px;
+
+    font-weight:
+        850;
+
+    letter-spacing:
+        -.7px;
+}
+
+
+.greeting-sub {
+
+    margin-top:
+        3px;
+
+    color:
+        #7588a9;
+
+    font-size:
+        11px;
+}
+
+
+.header-right {
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    gap:
+        12px;
+}
+
+
+.date-pill {
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    gap:
+        9px;
+
+    padding:
+        11px 17px;
+
+    border:
+        1px solid #e1ebfb;
+
+    border-radius:
+        24px;
+
+    background:
+        white;
+
+    color:
+        #59729d;
+
+    font-size:
+        10px;
+
+    box-shadow:
+        0 5px 18px rgba(45,92,160,.05);
+}
+
+
+.profile-circle {
+
+    width:
+        34px;
+
+    height:
+        34px;
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        center;
+
+    border-radius:
+        50%;
+
+    color:
+        white;
+
+    background:
+        linear-gradient(
+            145deg,
+            #4e91ff,
+            #1769ff
+        );
+
+    font-size:
+        12px;
+
+    font-weight:
+        800;
+
+    box-shadow:
+        0 8px 20px
+        rgba(23,105,255,.2);
+}
+
+
+/* ==========================================================
+   FILTER BAR
+   ========================================================== */
+
+.filter-panel {
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    gap:
+        12px;
+
+    padding:
+        14px;
+
+    margin-bottom:
+        20px;
+
+    border:
+        1px solid #dce8fa;
+
+    border-radius:
+        13px;
+
+    background:
+        rgba(255,255,255,.84);
+
+    box-shadow:
+        var(--shadow);
+
+    animation:
+        fadeUp .7s .08s both;
+}
+
+
+.filter-button {
+
+    height:
+        50px;
+
+    padding:
+        0 22px;
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        center;
+
+    gap:
+        8px;
+
+    border-radius:
+        10px;
+
+    color:
+        white;
+
+    background:
+        linear-gradient(
+            135deg,
+            #2380ff,
+            #075bdc
+        );
+
+    font-size:
+        12px;
+
+    font-weight:
+        800;
+
+    box-shadow:
+        0 10px 22px
+        rgba(23,105,255,.22);
+
+    transition:
+        all .25s ease;
+}
+
+
+.filter-button:hover {
+
+    transform:
+        translateY(-3px);
+
+    box-shadow:
+        0 15px 28px
+        rgba(23,105,255,.30);
+}
+
+
+/* ==========================================================
+   METRIC CARDS
+   ========================================================== */
+
+.metric-grid {
+
+    display:
+        grid;
+
+    grid-template-columns:
+        repeat(4, minmax(0,1fr));
+
+    gap:
+        14px;
+
+    margin-bottom:
+        20px;
+}
+
+
+.metric-card {
+
+    position:
+        relative;
+
+    overflow:
+        hidden;
+
+    min-height:
+        125px;
+
+    padding:
+        18px;
+
+    border:
+        1px solid var(--border);
+
+    border-radius:
+        12px;
+
+    background:
+        white;
+
+    box-shadow:
+        var(--shadow);
+
+    animation:
+        cardEnter .7s var(--delay) both;
+
+    transition:
+        transform .3s ease,
+        box-shadow .3s ease;
+}
+
+
+.metric-card:hover {
+
+    transform:
+        translateY(-5px);
+
+    box-shadow:
+        var(--shadow-hover);
+}
+
+
+.metric-card:after {
+
+    content:
+        "";
+
+    position:
+        absolute;
+
+    top:
+        0;
+
+    left:
+        0;
+
+    width:
+        100%;
+
+    height:
+        3px;
+
+    background:
+        var(--accent);
+
+    opacity:
+        .65;
+}
+
+
+.metric-icon {
+
+    width:
+        43px;
+
+    height:
+        43px;
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        center;
+
+    border-radius:
+        50%;
+
+    color:
+        white;
+
+    font-size:
+        16px;
+
+    font-weight:
+        900;
+
+    background:
+        var(--accent);
+
+    box-shadow:
+        0 8px 20px
+        color-mix(
+            in srgb,
+            var(--accent) 28%,
+            transparent
+        );
+
+    float:
+        left;
+
+    animation:
+        iconPop .7s var(--delay) both;
+}
+
+
+.metric-content {
+
+    margin-left:
+        59px;
+}
+
+
+.metric-label {
+
+    color:
+        #12366f;
+
+    font-size:
+        11px;
+
+    font-weight:
+        600;
+}
+
+
+.metric-value {
+
+    margin-top:
+        8px;
+
+    color:
+        #092d6c;
+
+    font-size:
+        23px;
+
+    font-weight:
+        900;
+
+    letter-spacing:
+        -.7px;
+}
+
+
+.metric-small {
+
+    margin-top:
+        6px;
+
+    color:
+        #7c8fab;
+
+    font-size:
+        9px;
+}
+
+
+.metric-small strong {
+
+    color:
+        #10ae72;
+
+    font-weight:
+        800;
+}
+
+
+/* ==========================================================
+   MAIN CONTENT GRID
+   ========================================================== */
+
+.dashboard-grid {
+
+    display:
+        grid;
+
+    grid-template-columns:
+        minmax(0, 1.75fr)
+        minmax(275px, .7fr);
+
+    gap:
+        14px;
+
+    align-items:
+        start;
+}
+
+
+.left-column {
+
+    min-width:
+        0;
+}
+
+
+.right-column {
+
+    min-width:
+        0;
+}
+
+
+/* ==========================================================
+   CARDS
+   ========================================================== */
+
+.panel {
+
+    overflow:
+        hidden;
+
+    border:
+        1px solid var(--border);
+
+    border-radius:
+        12px;
+
+    background:
+        white;
+
+    box-shadow:
+        var(--shadow);
+
+    animation:
+        cardEnter .75s .25s both;
+
+    transition:
+        all .3s ease;
+}
+
+
+.panel:hover {
+
+    box-shadow:
+        var(--shadow-hover);
+}
+
+
+.panel-header {
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        space-between;
+
+    padding:
+        15px 18px;
+
+    border-bottom:
+        1px solid #eef3fb;
+}
+
+
+.panel-title-wrap {
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    gap:
+        10px;
+}
+
+
+.panel-icon {
+
+    width:
+        34px;
+
+    height:
+        34px;
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        center;
+
+    border-radius:
+        10px;
+
+    background:
+        #eaf3ff;
+
+    color:
+        #1769ff;
+
+    font-size:
+        13px;
+
+    font-weight:
+        900;
+}
+
+
+.panel-title {
+
+    color:
+        #092d6c;
+
+    font-size:
+        14px;
+
+    font-weight:
+        800;
+}
+
+
+.panel-subtitle {
+
+    margin-top:
+        2px;
+
+    color:
+        #8392ab;
+
+    font-size:
+        8px;
+}
+
+
+/* ==========================================================
+   BAR CHART
+   ========================================================== */
+
+.bar-chart {
+
+    padding:
+        18px 20px 20px 20px;
+}
+
+
+.chart-area {
+
+    height:
+        250px;
+
+    position:
+        relative;
+
+    display:
+        flex;
+
+    align-items:
+        flex-end;
+
+    gap:
+        22px;
+
+    padding:
+        20px 12px 0 12px;
+
+    background-image:
+        linear-gradient(
+            to bottom,
+            #edf3fb 1px,
+            transparent 1px
+        );
+
+    background-size:
+        100% 25%;
+}
+
+
+.bar-column {
+
+    flex:
+        1;
+
+    height:
+        100%;
+
+    display:
+        flex;
+
+    flex-direction:
+        column;
+
+    align-items:
+        center;
+
+    justify-content:
+        flex-end;
+
+    min-width:
+        45px;
+}
+
+
+.bar-value {
+
+    color:
+        #1769ff;
+
+    font-size:
+        9px;
+
+    font-weight:
+        800;
+
+    margin-bottom:
+        7px;
+
+    opacity:
+        0;
+
+    animation:
+        textAppear .6s
+        var(--delay)
+        forwards;
+}
+
+
+.bar-shape {
+
+    width:
+        min(62px, 80%);
+
+    height:
+        var(--height);
+
+    min-height:
+        5px;
+
+    border-radius:
+        6px 6px 2px 2px;
+
+    background:
+        linear-gradient(
+            180deg,
+            #3d9cff,
+            #337ce9
+        );
+
+    box-shadow:
+        0 7px 18px
+        rgba(23,105,255,.18);
+
+    transform:
+        scaleY(0);
+
+    transform-origin:
+        bottom;
+
+    animation:
+        barGrow 1.15s
+        cubic-bezier(.2,.8,.2,1)
+        var(--delay)
+        forwards;
+
+    position:
+        relative;
+}
+
+
+.bar-shape:before {
+
+    content:
+        "";
+
+    position:
+        absolute;
+
+    top:
+        0;
+
+    left:
+        0;
+
+    right:
+        0;
+
+    height:
+        1px;
+
+    background:
+        rgba(255,255,255,.75);
+}
+
+
+.bar-label {
+
+    margin-top:
+        10px;
+
+    color:
+        #2c4d7f;
+
+    font-size:
+        9px;
+
+    font-weight:
+        600;
+
+    text-align:
+        center;
+}
+
+
+/* ==========================================================
+   DONUT
+   ========================================================== */
+
+.donut-area {
+
+    min-height:
+        330px;
+
+    padding:
+        22px;
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        center;
+
+    gap:
+        18px;
+}
+
+
+.donut-svg {
+
+    width:
+        185px;
+
+    height:
+        185px;
+
+    flex:
+        0 0 185px;
+}
+
+
+.donut-base {
+
+    fill:
+        none;
+
+    stroke:
+        #eef3fb;
+
+    stroke-width:
+        25;
+}
+
+
+.donut-piece {
+
+    fill:
+        none;
+
+    stroke-width:
+        25;
+
+    stroke-linecap:
+        butt;
+
+    stroke-dasharray:
+        var(--dash);
+
+    stroke-dashoffset:
+        var(--circ);
+
+    animation:
+        donutDraw 1.45s
+        cubic-bezier(.2,.8,.2,1)
+        var(--delay)
+        forwards;
+}
+
+
+.donut-center-value {
+
+    fill:
+        #092d6c;
+
+    font-size:
+        16px;
+
+    font-weight:
+        900;
+}
+
+
+.donut-center-label {
+
+    fill:
+        #8190aa;
+
+    font-size:
+        8px;
+
+    font-weight:
+        600;
+}
+
+
+.legend {
+
+    min-width:
+        135px;
+
+    display:
+        flex;
+
+    flex-direction:
+        column;
+
+    gap:
+        14px;
+}
+
+
+.legend-row {
+
+    display:
+        grid;
+
+    grid-template-columns:
+        9px 1fr auto;
+
+    gap:
+        8px;
+
+    align-items:
+        center;
+}
+
+
+.legend-dot {
+
+    width:
+        8px;
+
+    height:
+        8px;
+
+    border-radius:
+        50%;
+}
+
+
+.legend-name {
+
+    color:
+        #4f6387;
+
+    font-size:
+        9px;
+}
+
+
+.legend-percent {
+
+    color:
+        #173b73;
+
+    font-size:
+        9px;
+
+    font-weight:
+        800;
+}
+
+
+.legend-amount {
+
+    color:
+        #7487a6;
+
+    font-size:
+        8px;
+
+    grid-column:
+        2 / 4;
+
+    margin-top:
+        -5px;
+}
+
+
+/* ==========================================================
+   INSIGHTS
+   ========================================================== */
+
+.insights-panel {
+
+    margin-bottom:
+        14px;
+}
+
+
+.insight-item {
+
+    display:
+        flex;
+
+    gap:
+        11px;
+
+    margin:
+        10px;
+
+    padding:
+        12px;
+
+    border-radius:
+        10px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #ffffff,
+            #f8fbff
+        );
+
+    box-shadow:
+        0 5px 18px rgba(43,86,150,.06);
+
+    animation:
+        insightSlide .7s var(--delay) both;
+
+    transition:
+        transform .25s ease,
+        box-shadow .25s ease;
+}
+
+
+.insight-item:hover {
+
+    transform:
+        translateX(4px);
+
+    box-shadow:
+        0 10px 25px rgba(43,86,150,.1);
+}
+
+
+.insight-icon {
+
+    width:
+        35px;
+
+    height:
+        35px;
+
+    flex:
+        0 0 35px;
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        center;
+
+    border-radius:
+        50%;
+
+    color:
+        #1769ff;
+
+    background:
+        #eaf3ff;
+
+    font-size:
+        14px;
+
+    font-weight:
+        900;
+}
+
+
+.insight-text {
+
+    color:
+        #395681;
+
+    font-size:
+        9px;
+
+    line-height:
+        1.6;
+}
+
+
+.insight-text strong {
+
+    color:
+        #0b3372;
+
+    font-weight:
+        800;
+}
+
+
+/* ==========================================================
+   ROBOT / AI DECORATION
+   ========================================================== */
+
+.ai-decoration {
+
+    position:
+        relative;
+
+    height:
+        78px;
+
+    overflow:
+        hidden;
+
+    margin-top:
+        4px;
+
+    border-radius:
+        10px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #eef6ff,
+            #e5f1ff
+        );
+}
+
+
+.ai-robot {
+
+    position:
+        absolute;
+
+    right:
+        18px;
+
+    bottom:
+        8px;
+
+    width:
+        50px;
+
+    height:
+        42px;
+
+    border-radius:
+        14px;
+
+    background:
+        linear-gradient(
+            145deg,
+            #8ab9ff,
+            #1769ff
+        );
+
+    box-shadow:
+        0 10px 22px
+        rgba(23,105,255,.2);
+
+    animation:
+        robotFloat 3s ease-in-out infinite;
+}
+
+
+.ai-robot:before {
+
+    content:
+        "";
+
+    position:
+        absolute;
+
+    width:
+        5px;
+
+    height:
+        5px;
+
+    border-radius:
+        50%;
+
+    background:
+        white;
+
+    left:
+        13px;
+
+    top:
+        15px;
+
+    box-shadow:
+        19px 0 0 white;
+}
+
+
+.ai-robot:after {
+
+    content:
+        "";
+
+    position:
+        absolute;
+
+    width:
+        16px;
+
+    height:
+        3px;
+
+    border-radius:
+        5px;
+
+    background:
+        rgba(255,255,255,.8);
+
+    left:
+        17px;
+
+    bottom:
+        8px;
+}
+
+
+.ai-message {
+
+    position:
+        absolute;
+
+    left:
+        14px;
+
+    top:
+        25px;
+
+    color:
+        #1769ff;
+
+    font-size:
+        9px;
+
+    font-weight:
+        800;
+
+    animation:
+        messageFloat 3s ease-in-out infinite;
+}
+
+
+/* ==========================================================
+   RECENT TRANSACTIONS
+   ========================================================== */
+
+.transactions-panel {
+
+    margin-top:
+        14px;
+}
+
+
+.transaction-table {
+
+    width:
+        100%;
+
+    border-collapse:
+        collapse;
+}
+
+
+.transaction-table th {
+
+    padding:
+        11px 13px;
+
+    text-align:
+        left;
+
+    color:
+        #7186aa;
+
+    background:
+        #f8fbff;
+
+    font-size:
+        8px;
+
+    font-weight:
+        800;
+}
+
+
+.transaction-table td {
+
+    padding:
+        11px 13px;
+
+    border-top:
+        1px solid #edf2fa;
+
+    color:
+        #2d4b79;
+
+    font-size:
+        9px;
+}
+
+
+.transaction-table tr {
+
+    transition:
+        background .2s ease;
+}
+
+
+.transaction-table tbody tr:hover {
+
+    background:
+        #f7fbff;
+}
+
+
+.category-pill {
+
+    display:
+        inline-flex;
+
+    padding:
+        4px 8px;
+
+    border-radius:
+        999px;
+
+    background:
+        #edf5ff;
+
+    color:
+        #1769ff;
+
+    font-size:
+        8px;
+
+    font-weight:
+        800;
+}
+
+
+.transaction-amount {
+
+    color:
+        #15376e;
+
+    font-weight:
+        800;
+}
+
+
+/* ==========================================================
+   QUICK SUMMARY
+   ========================================================== */
+
+.summary-panel {
+
+    margin-top:
+        14px;
+}
+
+
+.summary-body {
+
+    padding:
+        16px;
+}
+
+
+.summary-line {
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    gap:
+        10px;
+
+    color:
+        #3e5b84;
+
+    font-size:
+        10px;
+
+    line-height:
+        1.6;
+}
+
+
+.summary-icon {
+
+    width:
+        36px;
+
+    height:
+        36px;
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        center;
+
+    flex:
+        0 0 36px;
+
+    border-radius:
+        50%;
+
+    background:
+        #eef6ff;
+
+    color:
+        #1769ff;
+
+    font-weight:
+        900;
+}
+
+
+.progress {
+
+    margin-top:
+        14px;
+
+    height:
+        7px;
+
+    overflow:
+        hidden;
+
+    border-radius:
+        999px;
+
+    background:
+        #e8f0fb;
+}
+
+
+.progress-value {
+
+    height:
+        100%;
+
+    width:
+        var(--progress);
+
+    border-radius:
+        999px;
+
+    background:
+        linear-gradient(
+            90deg,
+            #1769ff,
+            #54b8ff
+        );
+
+    transform:
+        scaleX(0);
+
+    transform-origin:
+        left;
+
+    animation:
+        progressGrow 1.2s .4s forwards;
+}
+
+
+/* ==========================================================
+   FORM
+   ========================================================== */
+
+.form-card {
+
+    padding:
+        22px;
+
+    border:
+        1px solid var(--border);
+
+    border-radius:
+        14px;
+
+    background:
+        white;
+
+    box-shadow:
+        var(--shadow);
+
+    animation:
+        cardEnter .7s both;
+}
+
+
+/* ==========================================================
+   ANIMATIONS
+   ========================================================== */
+
+@keyframes fadeDown {
+
+    from {
+        opacity: 0;
+        transform: translateY(-15px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+
+@keyframes fadeUp {
+
+    from {
+        opacity: 0;
+        transform: translateY(18px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+
+@keyframes cardEnter {
+
+    from {
+        opacity: 0;
+        transform:
+            translateY(20px)
+            scale(.985);
+    }
+
+    to {
+        opacity: 1;
+        transform:
+            translateY(0)
+            scale(1);
+    }
+}
+
+
+@keyframes iconPop {
+
+    0% {
+        opacity: 0;
+        transform: scale(.55) rotate(-10deg);
+    }
+
+    70% {
+        transform: scale(1.08) rotate(2deg);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1) rotate(0);
+    }
+}
+
+
+@keyframes logoFloat {
+
+    0%, 100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-5px);
+    }
+}
+
+
+@keyframes handWave {
+
+    0%, 100% {
+        transform: rotate(0);
+    }
+
+    10% {
+        transform: rotate(14deg);
+    }
+
+    20% {
+        transform: rotate(-9deg);
+    }
+
+    30% {
+        transform: rotate(12deg);
+    }
+
+    40% {
+        transform: rotate(0);
+    }
+}
+
+
+@keyframes waveMove {
+
+    0%, 100% {
+        transform:
+            translateX(0)
+            rotate(-4deg);
+    }
+
+    50% {
+        transform:
+            translateX(18px)
+            rotate(-2deg);
+    }
+}
+
+
+@keyframes barGrow {
+
+    from {
+        transform: scaleY(0);
+    }
+
+    to {
+        transform: scaleY(1);
+    }
+}
+
+
+@keyframes textAppear {
+
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+
+@keyframes donutDraw {
+
+    from {
+        stroke-dashoffset:
+            var(--circ);
+    }
+
+    to {
+        stroke-dashoffset:
+            var(--offset);
+    }
+}
+
+
+@keyframes insightSlide {
+
+    from {
+        opacity: 0;
+        transform:
+            translateX(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform:
+            translateX(0);
+    }
+}
+
+
+@keyframes robotFloat {
+
+    0%, 100% {
+        transform:
+            translateY(0);
+    }
+
+    50% {
+        transform:
+            translateY(-7px);
+    }
+}
+
+
+@keyframes messageFloat {
+
+    0%, 100% {
+        transform:
+            translateY(0);
+    }
+
+    50% {
+        transform:
+            translateY(-3px);
+    }
+}
+
+
+@keyframes progressGrow {
+
+    from {
+        transform: scaleX(0);
+    }
+
+    to {
+        transform: scaleX(1);
+    }
+}
+
+
+/* ==========================================================
+   STREAMLIT WIDGET POLISH
+   ========================================================== */
+
+.stButton > button {
+
+    border-radius:
+        10px !important;
+
+    min-height:
+        42px !important;
+}
+
+
+.stTextInput input,
+.stNumberInput input {
+
+    border-radius:
+        10px !important;
+}
+
+
+div[data-baseweb="select"] > div {
+
+    border-radius:
+        10px !important;
+}
+
+
+[data-testid="stDataFrame"] {
+
+    border-radius:
+        12px;
+
+    overflow:
+        hidden;
+}
+
+
+/* ==========================================================
+   LAPTOP RESPONSIVE
+   ========================================================== */
+
+@media screen and (max-width: 1450px) {
+
+    [data-testid="stSidebar"] {
+
+        width:
+            235px !important;
+
+        min-width:
+            235px !important;
+    }
+
+    .metric-grid {
+
+        gap:
+            10px;
+    }
+
+    .metric-card {
+
         padding:
-            8px
-            7px
-            22px
-            7px;
+            15px;
+    }
 
-        animation:
-            fadeIn 0.8s ease-out;
-    ">
+    .metric-value {
+
+        font-size:
+            20px;
+    }
+
+    .dashboard-grid {
+
+        grid-template-columns:
+            minmax(0, 1.7fr)
+            minmax(255px, .72fr);
+    }
+
+    .donut-svg {
+
+        width:
+            160px;
+
+        height:
+            160px;
+
+        flex-basis:
+            160px;
+    }
+
+    .legend {
+
+        min-width:
+            120px;
+    }
+}
+
+
+/* ==========================================================
+   SMALL LAPTOP
+   ========================================================== */
+
+@media screen and (max-width: 1200px) {
+
+    .dashboard-grid {
+
+        grid-template-columns:
+            1fr;
+    }
+
+    .right-column {
+
+        display:
+            grid;
+
+        grid-template-columns:
+            1fr 1fr;
+
+        gap:
+            14px;
+    }
+
+    .transactions-panel {
+
+        margin-top:
+            0;
+    }
+
+    .metric-grid {
+
+        grid-template-columns:
+            repeat(2,1fr);
+    }
+
+    .filter-panel {
+
+        flex-wrap:
+            wrap;
+    }
+}
+
+
+/* ==========================================================
+   TABLET / SMALL WINDOW
+   ========================================================== */
+
+@media screen and (max-width: 850px) {
+
+    [data-testid="stSidebar"] {
+
+        width:
+            210px !important;
+
+        min-width:
+            210px !important;
+    }
+
+    .right-column {
+
+        grid-template-columns:
+            1fr;
+    }
+
+    .metric-grid {
+
+        grid-template-columns:
+            repeat(2,1fr);
+    }
+
+    .header-right {
+
+        display:
+            none;
+    }
+
+    .greeting-title {
+
+        font-size:
+            18px;
+    }
+
+    .greeting-sub {
+
+        font-size:
+            9px;
+    }
+
+    .chart-area {
+
+        gap:
+            10px;
+    }
+}
+
+
+/* ==========================================================
+   MOBILE
+   ========================================================== */
+
+@media screen and (max-width: 600px) {
+
+    [data-testid="stSidebar"] {
+
+        width:
+            190px !important;
+
+        min-width:
+            190px !important;
+    }
+
+    .block-container {
+
+        padding:
+            10px !important;
+    }
+
+    .metric-grid {
+
+        grid-template-columns:
+            1fr;
+    }
+
+    .dashboard-grid {
+
+        grid-template-columns:
+            1fr;
+    }
+
+    .right-column {
+
+        display:
+            block;
+    }
+
+    .chart-area {
+
+        height:
+            210px;
+
+        gap:
+            5px;
+    }
+
+    .bar-shape {
+
+        width:
+            35px;
+    }
+
+    .donut-area {
+
+        flex-direction:
+            column;
+    }
+
+    .filter-panel {
+
+        display:
+            block;
+    }
+
+    .filter-button {
+
+        width:
+            100%;
+
+        margin-bottom:
+            8px;
+    }
+
+    .top-header {
+
+        margin-bottom:
+            12px;
+    }
+
+    .greeting-icon {
+
+        width:
+            40px;
+
+        height:
+            40px;
+
+        font-size:
+            20px;
+    }
+
+    .greeting-title {
+
+        font-size:
+            16px;
+    }
+}
+
+</style>
+""",
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+
+render(
+    """
+    <div class="brand">
+
+        <div class="brand-logo">
+            EA
+        </div>
+
+        <div>
+
+            <div class="brand-name">
+                ExpenseAI
+            </div>
+
+            <div class="brand-sub">
+                SMARTER SPENDING. BETTER TOMORROW.
+            </div>
+
+        </div>
+
+    </div>
+    """
+)
+
+
+page = st.sidebar.radio(
+    "WORKSPACE",
+    [
+        "Dashboard",
+        "Add Expense",
+        "Transactions",
+        "Analytics",
+        "Insights"
+    ],
+    label_visibility="visible"
+)
+
+
+render(
+    """
+    <div class="sidebar-bottom">
+
+        <div class="sidebar-bottom-title">
+            Smart choices today,
+            bigger dreams tomorrow.
+        </div>
 
         <div style="
-            display:flex;
-            align-items:center;
-            gap:12px;
+            position:absolute;
+            right:20px;
+            bottom:50px;
+            color:#20a9ff;
+            font-size:28px;
+            font-weight:900;
         ">
+            ↗
+        </div>
 
-            <div style="
-                width:50px;
-                height:50px;
+        <div class="sidebar-wave"></div>
 
-                border-radius:15px;
+    </div>
+    """
+)
 
-                background:
-                    linear-gradient(
-                        135deg,
-                        #1769ff,
-                        #55a0ff
-                    );
 
-                color:white;
+if st.sidebar.button(
+    "Replay Animations",
+    use_container_width=True
+):
 
-                display:flex;
-                align-items:center;
-                justify-content:center;
+    st.rerun()
 
-                font-size:20px;
-                font-weight:900;
 
-                box-shadow:
-                    0 10px 25px
-                    rgba(23,105,255,0.25);
+# ============================================================
+# TOP HEADER
+# ============================================================
 
-                animation:
-                    float 3s ease-in-out infinite;
-            ">
-                ET
+today = date.today()
+
+formatted_today = today.strftime(
+    "%a, %d %b %Y"
+)
+
+
+render(
+    f"""
+    <div class="top-header">
+
+        <div class="greeting">
+
+            <div class="greeting-icon">
+                👋
             </div>
 
             <div>
 
-                <div style="
-                    color:#092f6d;
-                    font-size:22px;
-                    font-weight:850;
-                    letter-spacing:-0.6px;
-                ">
-                    Expense Tracker
+                <div class="greeting-title">
+                    Good Morning, Josh!
                 </div>
 
-                <div style="
-                    color:#7890b4;
-                    font-size:9px;
-                    font-weight:800;
-                    letter-spacing:0.6px;
-                    margin-top:2px;
-                ">
-                    SMART SPENDING
+                <div class="greeting-sub">
+                    Here's what's happening with your expenses today.
                 </div>
 
             </div>
 
         </div>
 
-    </div>
-    """)
 
+        <div class="header-right">
 
-    # --------------------------------------------------------
-    # WORKSPACE
-    # --------------------------------------------------------
+            <div class="date-pill">
 
-    st.html("""
-    <div style="
-        color:#7890b4;
-        font-size:10px;
-        font-weight:850;
-        letter-spacing:1.5px;
-        margin:
-            4px
-            0
-            12px
-            4px;
-    ">
-        WORKSPACE
-    </div>
-    """)
+                <span style="
+                    color:#1769ff;
+                    font-size:14px;
+                ">
+                    ▣
+                </span>
 
+                {formatted_today}
 
-    # --------------------------------------------------------
-    # NAVIGATION
-    # --------------------------------------------------------
+            </div>
 
-    # The dashboard's Add New Expense button uses this flag to move
-    # the sidebar radio to the Add Expense page after rerun.
-    if st.session_state.get("go_add", False):
-        st.session_state["workspace_page"] = "Add Expense"
-        st.session_state["go_add"] = False
+            <div class="profile-circle">
+                J
+            </div>
 
-    page = st.radio(
-        "",
-        [
-            "Dashboard",
-            "Add Expense",
-            "Transactions",
-            "Analytics",
-            "Insights"
-        ],
-        index=0,
-        key="workspace_page",
-        label_visibility="collapsed"
-    )
-
-
-    # --------------------------------------------------------
-    # REPLAY
-    # --------------------------------------------------------
-
-    if st.button(
-        "Replay Animations",
-        use_container_width=True
-    ):
-
-        st.rerun()
-
-
-    # --------------------------------------------------------
-    # SQL CONNECTION
-    # --------------------------------------------------------
-
-    st.html("""
-    <div style="
-        margin-top:28px;
-
-        padding:18px;
-
-        border-radius:18px;
-
-        background:
-            linear-gradient(
-                145deg,
-                #ffffff,
-                #f3f7ff
-            );
-
-        border:
-            1px solid #dce8fb;
-
-        box-shadow:
-            0 10px 30px
-            rgba(23,105,255,0.08);
-
-        animation:
-            fadeUp 1s ease-out;
-    ">
-
-        <div style="
-            color:#1769ff;
-            font-size:12px;
-            font-weight:800;
-        ">
-            LIVE SQL CONNECTION
-        </div>
-
-        <div style="
-            color:#092f6d;
-            font-size:13px;
-            font-weight:700;
-            margin-top:7px;
-        ">
-            JOSH\\SQLEXPRESS01
-        </div>
-
-        <div style="
-            display:flex;
-            align-items:center;
-            gap:7px;
-            margin-top:10px;
-            color:#6e86aa;
-            font-size:11px;
-        ">
-
-            <span style="
-                width:7px;
-                height:7px;
-                background:#20bd75;
-                border-radius:50%;
-
-                box-shadow:
-                    0 0 0 5px
-                    rgba(32,189,117,0.10);
-
-                animation:
-                    pulse 1.8s infinite;
-            "></span>
-
-            Database connected
+            <div style="
+                color:#1769ff;
+                font-size:12px;
+            ">
+                ⌄
+            </div>
 
         </div>
 
     </div>
-    """)
+    """
+)
 
 
 # ============================================================
@@ -928,349 +2836,83 @@ with st.sidebar:
 if page == "Dashboard":
 
     # --------------------------------------------------------
-    # HERO
+    # FILTER PANEL
     # --------------------------------------------------------
 
-    st.html(f"""
-    <div style="
-        position:relative;
-        overflow:hidden;
-
-        min-height:275px;
-
-        padding:
-            40px
-            50px;
-
-        border-radius:28px;
-
-        background:
-            linear-gradient(
-                120deg,
-                #08285c 0%,
-                #103d86 45%,
-                #1769d9 100%
-            );
-
-        box-shadow:
-            0 25px 55px
-            rgba(16,61,134,0.22);
-
-        animation:
-            fadeUp 0.8s ease-out;
-    ">
-
-        <div style="
-            position:absolute;
-            inset:0;
-
-            background-image:
-                linear-gradient(
-                    rgba(255,255,255,0.035)
-                    1px,
-                    transparent 1px
-                ),
-                linear-gradient(
-                    90deg,
-                    rgba(255,255,255,0.035)
-                    1px,
-                    transparent 1px
-                );
-
-            background-size:
-                36px 36px;
-
-            opacity:0.8;
-        "></div>
-
-        <div style="
-            position:absolute;
-
-            width:220px;
-            height:220px;
-
-            right:-50px;
-            bottom:-110px;
-
-            border-radius:50%;
-
-            background:
-                rgba(76,174,255,0.25);
-
-            animation:
-                float 4s ease-in-out infinite;
-        "></div>
-
-        <div style="
-            position:absolute;
-
-            width:100px;
-            height:100px;
-
-            right:220px;
-            top:-55px;
-
-            border-radius:50%;
-
-            background:
-                rgba(94,198,255,0.10);
-        "></div>
-
-        <div style="
-            position:relative;
-            z-index:2;
-        ">
-
-            <div style="
-                display:flex;
-                align-items:center;
-                gap:10px;
-
-                color:#d7e7ff;
-
-                font-size:12px;
-                font-weight:850;
-
-                letter-spacing:1.5px;
-
-                margin-bottom:20px;
-            ">
-
-                <span style="
-                    width:9px;
-                    height:9px;
-
-                    border-radius:50%;
-
-                    background:#42d79b;
-
-                    box-shadow:
-                        0 0 0 6px
-                        rgba(66,215,155,0.12);
-
-                    animation:
-                        pulse 2s infinite;
-                "></span>
-
-                SMART PERSONAL FINANCE
-
-            </div>
-
-
-            <div style="
-                display:flex;
-                align-items:center;
-                gap:18px;
-            ">
-
-                <div style="
-                    width:70px;
-                    height:70px;
-
-                    border-radius:20px;
-
-                    display:flex;
-                    align-items:center;
-                    justify-content:center;
-
-                    color:white;
-
-                    font-size:30px;
-                    font-weight:900;
-
-                    background:
-                        rgba(255,255,255,0.14);
-
-                    border:
-                        1px solid
-                        rgba(255,255,255,0.25);
-
-                    box-shadow:
-                        0 15px 30px
-                        rgba(0,0,0,0.10);
-
-                    animation:
-                        float 3s ease-in-out infinite;
-                ">
-                    ET
-                </div>
-
-                <div style="
-                    color:white;
-
-                    font-size:48px;
-
-                    font-weight:900;
-
-                    letter-spacing:-2px;
-                ">
-                    Expense Tracker
-                </div>
-
-            </div>
-
-
-            <div style="
-                color:#c9dcfa;
-
-                font-size:17px;
-
-                line-height:1.65;
-
-                max-width:850px;
-
-                margin-top:18px;
-            ">
-                Track your expenses, understand spending patterns
-                and transform raw transactions into clear financial insights.
-            </div>
-
-
-            <div style="
-                display:flex;
-                gap:12px;
-                flex-wrap:wrap;
-
-                margin-top:24px;
-            ">
-
-                <span style="
-                    padding:10px 17px;
-
-                    border-radius:999px;
-
-                    color:white;
-
-                    background:
-                        rgba(255,255,255,0.11);
-
-                    border:
-                        1px solid
-                        rgba(255,255,255,0.20);
-
-                    font-size:12px;
-                    font-weight:700;
-                ">
-                    Smart Analytics
-                </span>
-
-                <span style="
-                    padding:10px 17px;
-
-                    border-radius:999px;
-
-                    color:white;
-
-                    background:
-                        rgba(255,255,255,0.11);
-
-                    border:
-                        1px solid
-                        rgba(255,255,255,0.20);
-
-                    font-size:12px;
-                    font-weight:700;
-                ">
-                    Live SQL Data
-                </span>
-
-                <span style="
-                    padding:10px 17px;
-
-                    border-radius:999px;
-
-                    color:white;
-
-                    background:
-                        rgba(255,255,255,0.11);
-
-                    border:
-                        1px solid
-                        rgba(255,255,255,0.20);
-
-                    font-size:12px;
-                    font-weight:700;
-                ">
-                    Expense Tracking
-                </span>
-
-            </div>
-
-        </div>
-
-    </div>
-    """)
-
-
-    st.write("")
-
-
-    # --------------------------------------------------------
-    # FILTER BAR
-    # --------------------------------------------------------
-
-    st.html("""
-    <div style="
-        margin-bottom:8px;
-
-        color:#092f6d;
-
-        font-size:18px;
-        font-weight:850;
-    ">
-        Financial Overview
-    </div>
-    """)
-
-
-    filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(
-        [1.2, 1.3, 1.3, 1]
+    filter_left, filter_date, filter_cat, filter_pay, filter_search, filter_clear = st.columns(
+        [1.15, 1.35, 1.05, 1.05, 1.15, .55],
+        gap="small"
     )
 
 
-    with filter_col1:
+    with filter_left:
 
         if st.button(
-            "＋ Add New Expense",
+            "＋  Add New Expense",
             use_container_width=True
         ):
 
             st.session_state["go_add"] = True
-            st.rerun()
 
 
-    with filter_col2:
+    with filter_date:
 
-        selected_category = st.selectbox(
+        date_range = st.date_input(
+            "Date Range",
+            value=(
+                today.replace(day=1),
+                today
+            ),
+            label_visibility="visible"
+        )
+
+
+    with filter_cat:
+
+        category_filter = st.selectbox(
             "Category",
             ["All Categories"]
             + sorted(
-                df["CATEGORY"].dropna().unique().tolist()
+                df["CATEGORY"]
+                .unique()
+                .tolist()
             )
             if not df.empty
             else ["All Categories"]
         )
 
 
-    with filter_col3:
+    with filter_pay:
 
-        selected_payment = st.selectbox(
+        payment_filter = st.selectbox(
             "Payment Method",
             ["All Methods"]
             + sorted(
-                df["PAYMENTMETHOD"].dropna().unique().tolist()
+                df["PAYMENTMETHOD"]
+                .unique()
+                .tolist()
             )
             if not df.empty
             else ["All Methods"]
         )
 
 
-    with filter_col4:
+    with filter_search:
 
-        search_text = st.text_input(
+        search_filter = st.text_input(
             "Search description...",
-            placeholder="Search..."
+            label_visibility="visible"
         )
+
+
+    with filter_clear:
+
+        if st.button(
+            "Clear",
+            use_container_width=True
+        ):
+
+            st.rerun()
 
 
     # --------------------------------------------------------
@@ -1279,859 +2921,618 @@ if page == "Dashboard":
 
     filtered_df = df.copy()
 
-    if selected_category != "All Categories":
 
-        filtered_df = filtered_df[
-            filtered_df["CATEGORY"]
-            == selected_category
-        ]
+    if not filtered_df.empty:
 
+        if isinstance(
+            date_range,
+            tuple
+        ) and len(date_range) == 2:
 
-    if selected_payment != "All Methods":
-
-        filtered_df = filtered_df[
-            filtered_df["PAYMENTMETHOD"]
-            == selected_payment
-        ]
-
-
-    if search_text.strip():
-
-        filtered_df = filtered_df[
-            filtered_df[
-                "DESCRIPTIONTYPE"
-            ]
-            .astype(str)
-            .str.contains(
-                search_text,
-                case=False,
-                na=False
+            start_date = pd.Timestamp(
+                date_range[0]
             )
-        ]
+
+            end_date = (
+                pd.Timestamp(
+                    date_range[1]
+                )
+                + pd.Timedelta(days=1)
+            )
+
+            filtered_df = filtered_df[
+                (
+                    filtered_df["EXPENSEDATE"]
+                    >= start_date
+                )
+                &
+                (
+                    filtered_df["EXPENSEDATE"]
+                    < end_date
+                )
+            ]
 
 
-    # ========================================================
+        if category_filter != "All Categories":
+
+            filtered_df = filtered_df[
+                filtered_df["CATEGORY"]
+                == category_filter
+            ]
+
+
+        if payment_filter != "All Methods":
+
+            filtered_df = filtered_df[
+                filtered_df["PAYMENTMETHOD"]
+                == payment_filter
+            ]
+
+
+        if search_filter.strip():
+
+            filtered_df = filtered_df[
+                filtered_df[
+                    "DESCRIPTIONTYPE"
+                ]
+                .str.contains(
+                    search_filter,
+                    case=False,
+                    na=False
+                )
+            ]
+
+
+    # --------------------------------------------------------
+    # FILTERED METRICS
+    # --------------------------------------------------------
+
+    if filtered_df.empty:
+
+        dash_total = 0
+        dash_count = 0
+        dash_average = 0
+        dash_category = "None"
+
+        dash_categories = pd.Series(
+            dtype=float
+        )
+
+        dash_payments = pd.Series(
+            dtype=float
+        )
+
+    else:
+
+        dash_total = float(
+            filtered_df["AMOUNT"].sum()
+        )
+
+        dash_count = len(
+            filtered_df
+        )
+
+        dash_average = float(
+            filtered_df["AMOUNT"].mean()
+        )
+
+        dash_categories = (
+            filtered_df
+            .groupby("CATEGORY")["AMOUNT"]
+            .sum()
+            .sort_values(
+                ascending=False
+            )
+        )
+
+        dash_payments = (
+            filtered_df
+            .groupby("PAYMENTMETHOD")["AMOUNT"]
+            .sum()
+            .sort_values(
+                ascending=False
+            )
+        )
+
+        dash_category = (
+            dash_categories.index[0]
+            if not dash_categories.empty
+            else "None"
+        )
+
+
+    # --------------------------------------------------------
     # METRIC CARDS
-    # ========================================================
-
-    metric1, metric2, metric3, metric4 = st.columns(4)
-
-
-    with metric1:
-
-        st.html(f"""
-        <div style="
-            min-height:150px;
-
-            padding:24px;
-
-            border-radius:18px;
-
-            background:
-                linear-gradient(
-                    145deg,
-                    #ffffff,
-                    #f5fbff
-                );
-
-            border:
-                1px solid #d9ebf7;
-
-            box-shadow:
-                0 10px 28px
-                rgba(32,189,117,0.07);
-
-            animation:
-                fadeUp 0.8s ease-out;
-        ">
-
-            <div style="
-                width:48px;
-                height:48px;
-
-                border-radius:50%;
-
-                background:
-                    linear-gradient(
-                        135deg,
-                        #37d889,
-                        #10ae67
-                    );
-
-                color:white;
-
-                display:flex;
-                align-items:center;
-                justify-content:center;
-
-                font-size:19px;
-                font-weight:900;
-
-                box-shadow:
-                    0 8px 18px
-                    rgba(16,174,103,0.25);
-            ">
-                Rs
-            </div>
-
-            <div style="
-                color:#123b76;
-
-                font-size:13px;
-                font-weight:700;
-
-                margin-top:15px;
-            ">
-                Total Expense
-            </div>
-
-            <div style="
-                color:#082f6d;
-
-                font-size:29px;
-                font-weight:900;
-
-                margin-top:5px;
-
-                letter-spacing:-1px;
-            ">
-                {money(total_expense)}
-            </div>
-
-            <div style="
-                height:4px;
-
-                border-radius:20px;
-
-                margin-top:14px;
-
-                background:
-                    linear-gradient(
-                        90deg,
-                        #48d990,
-                        #1769ff
-                    );
-            "></div>
-
-        </div>
-        """)
-
-
-    with metric2:
-
-        st.html(f"""
-        <div style="
-            min-height:150px;
-
-            padding:24px;
-
-            border-radius:18px;
-
-            background:
-                linear-gradient(
-                    145deg,
-                    #ffffff,
-                    #f7f5ff
-                );
-
-            border:
-                1px solid #e1dcff;
-
-            box-shadow:
-                0 10px 28px
-                rgba(109,79,255,0.07);
-
-            animation:
-                fadeUp 0.95s ease-out;
-        ">
-
-            <div style="
-                width:48px;
-                height:48px;
-
-                border-radius:50%;
-
-                background:
-                    linear-gradient(
-                        135deg,
-                        #9b7cff,
-                        #6848ee
-                    );
-
-                color:white;
-
-                display:flex;
-                align-items:center;
-                justify-content:center;
-
-                font-size:20px;
-                font-weight:900;
-            ">
-                #
-            </div>
-
-            <div style="
-                color:#123b76;
-                font-size:13px;
-                font-weight:700;
-                margin-top:15px;
-            ">
-                Transactions
-            </div>
-
-            <div style="
-                color:#082f6d;
-                font-size:29px;
-                font-weight:900;
-                margin-top:5px;
-            ">
-                {transaction_count}
-            </div>
-
-            <div style="
-                height:4px;
-                border-radius:20px;
-                margin-top:14px;
-
-                background:
-                    linear-gradient(
-                        90deg,
-                        #9b7cff,
-                        #1769ff
-                    );
-            "></div>
-
-        </div>
-        """)
-
-
-    with metric3:
-
-        st.html(f"""
-        <div style="
-            min-height:150px;
-
-            padding:24px;
-
-            border-radius:18px;
-
-            background:
-                linear-gradient(
-                    145deg,
-                    #ffffff,
-                    #f4f9ff
-                );
-
-            border:
-                1px solid #d8e9ff;
-
-            box-shadow:
-                0 10px 28px
-                rgba(23,105,255,0.07);
-
-            animation:
-                fadeUp 1.1s ease-out;
-        ">
-
-            <div style="
-                width:48px;
-                height:48px;
-
-                border-radius:50%;
-
-                background:
-                    linear-gradient(
-                        135deg,
-                        #55a5ff,
-                        #1769ff
-                    );
-
-                color:white;
-
-                display:flex;
-                align-items:center;
-                justify-content:center;
-
-                font-size:14px;
-                font-weight:900;
-            ">
-                AVG
-            </div>
-
-            <div style="
-                color:#123b76;
-                font-size:13px;
-                font-weight:700;
-                margin-top:15px;
-            ">
-                Average Expense
-            </div>
-
-            <div style="
-                color:#082f6d;
-                font-size:29px;
-                font-weight:900;
-                margin-top:5px;
-            ">
-                {money(average_expense)}
-            </div>
-
-            <div style="
-                height:4px;
-                border-radius:20px;
-                margin-top:14px;
-
-                background:
-                    linear-gradient(
-                        90deg,
-                        #55a5ff,
-                        #1769ff
-                    );
-            "></div>
-
-        </div>
-        """)
-
-
-    with metric4:
-
-        top_value = (
-            category_totals.iloc[0]
-            if not category_totals.empty
-            else 0
+    # --------------------------------------------------------
+
+    top_amount = (
+        float(
+            dash_categories.iloc[0]
         )
+        if not dash_categories.empty
+        else 0
+    )
 
-        top_percentage = (
-            (top_value / total_expense * 100)
-            if total_expense > 0
-            else 0
-        )
 
-        st.html(f"""
-        <div style="
-            min-height:150px;
+    top_share = (
+        top_amount / dash_total * 100
+        if dash_total > 0
+        else 0
+    )
 
-            padding:24px;
 
-            border-radius:18px;
+    render(
+        f"""
+        <div class="metric-grid">
 
-            background:
-                linear-gradient(
-                    145deg,
-                    #ffffff,
-                    #fff7fc
-                );
+            <div
+                class="metric-card"
+                style="
+                    --accent:#19c47d;
+                    --delay:.05s;
+                "
+            >
 
-            border:
-                1px solid #f2dff0;
+                <div class="metric-icon">
+                    Rs
+                </div>
 
-            box-shadow:
-                0 10px 28px
-                rgba(236,72,153,0.07);
+                <div class="metric-content">
 
-            animation:
-                fadeUp 1.25s ease-out;
-        ">
+                    <div class="metric-label">
+                        Total Expense
+                    </div>
 
-            <div style="
-                width:48px;
-                height:48px;
+                    <div class="metric-value">
+                        {money(dash_total)}
+                    </div>
 
-                border-radius:50%;
+                    <div class="metric-small">
+                        <strong>↑ Live</strong>
+                        &nbsp; current filtered period
+                    </div>
 
-                background:
-                    linear-gradient(
-                        135deg,
-                        #ff7cc3,
-                        #d83291
-                    );
+                </div>
 
-                color:white;
-
-                display:flex;
-                align-items:center;
-                justify-content:center;
-
-                font-size:20px;
-                font-weight:900;
-            ">
-                TOP
             </div>
 
-            <div style="
-                color:#123b76;
-                font-size:13px;
-                font-weight:700;
-                margin-top:15px;
-            ">
-                Top Category
+
+            <div
+                class="metric-card"
+                style="
+                    --accent:#7359f5;
+                    --delay:.12s;
+                "
+            >
+
+                <div class="metric-icon">
+                    =
+                </div>
+
+                <div class="metric-content">
+
+                    <div class="metric-label">
+                        Transactions
+                    </div>
+
+                    <div class="metric-value">
+                        {dash_count}
+                    </div>
+
+                    <div class="metric-small">
+                        <strong>↑ Active</strong>
+                        &nbsp; recorded transactions
+                    </div>
+
+                </div>
+
             </div>
 
-            <div style="
-                color:#082f6d;
-                font-size:24px;
-                font-weight:900;
-                margin-top:7px;
-            ">
-                {safe_text(top_category)}
+
+            <div
+                class="metric-card"
+                style="
+                    --accent:#278cff;
+                    --delay:.19s;
+                "
+            >
+
+                <div class="metric-icon">
+                    #
+                </div>
+
+                <div class="metric-content">
+
+                    <div class="metric-label">
+                        Average Expense
+                    </div>
+
+                    <div class="metric-value">
+                        {money(dash_average)}
+                    </div>
+
+                    <div class="metric-small">
+                        <strong>↑ 8%</strong>
+                        &nbsp; spending metric
+                    </div>
+
+                </div>
+
             </div>
 
-            <div style="
-                color:#7188aa;
-                font-size:11px;
-                margin-top:7px;
-            ">
-                {top_percentage:.0f}% of total spending
+
+            <div
+                class="metric-card"
+                style="
+                    --accent:#e64fb5;
+                    --delay:.26s;
+                "
+            >
+
+                <div class="metric-icon">
+                    *
+                </div>
+
+                <div class="metric-content">
+
+                    <div class="metric-label">
+                        Top Category
+                    </div>
+
+                    <div class="metric-value">
+                        {escape(str(dash_category))}
+                    </div>
+
+                    <div class="metric-small">
+                        <strong>{top_share:.0f}%</strong>
+                        of total spending
+                    </div>
+
+                </div>
+
             </div>
 
         </div>
-        """)
-
-
-    st.write("")
-
-
-    # ========================================================
-    # CHARTS
-    # ========================================================
-
-    chart_left, chart_right = st.columns(
-        [1.55, 1]
+        """
     )
 
 
     # --------------------------------------------------------
-    # CATEGORY BAR CHART
+    # MAIN DASHBOARD GRID
     # --------------------------------------------------------
 
-    with chart_left:
+    render(
+        """
+        <div style="
+            height:2px;
+            margin-bottom:12px;
+        "></div>
+        """
+    )
 
-        if category_totals.empty:
 
-            st.info("No category data available.")
+    left_col, right_col = st.columns(
+        [1.75, .72],
+        gap="small"
+    )
 
-        else:
 
-            max_category = float(
-                category_totals.max()
-            )
+    # ========================================================
+    # LEFT SIDE
+    # ========================================================
 
-            bar_rows = ""
+    with left_col:
 
-            bar_colors = [
-                "#1769ff",
-                "#4b8cff",
-                "#55a5ff",
-                "#6b72ff",
-                "#8d65ff",
-                "#a956ef"
-            ]
+        # ----------------------------------------------------
+        # CHART ROW
+        # ----------------------------------------------------
 
-            for index, (category, amount) in enumerate(
-                category_totals.items()
-            ):
+        chart_col, payment_col = st.columns(
+            [1.3, .95],
+            gap="small"
+        )
 
-                width = (
-                    amount / max_category * 100
-                    if max_category > 0
-                    else 0
+
+        # ----------------------------------------------------
+        # BAR CHART
+        # ----------------------------------------------------
+
+        with chart_col:
+
+            max_bar = (
+                float(
+                    dash_categories.max()
                 )
-
-                color = bar_colors[
-                    index % len(bar_colors)
-                ]
-
-                bar_rows += f"""
-                <div style="
-                    margin-bottom:20px;
-                ">
-
-                    <div style="
-                        display:flex;
-                        justify-content:space-between;
-
-                        color:#47678f;
-
-                        font-size:12px;
-                        font-weight:700;
-
-                        margin-bottom:8px;
-                    ">
-
-                        <span>
-                            {safe_text(category)}
-                        </span>
-
-                        <span style="
-                            color:#092f6d;
-                        ">
-                            {money(amount)}
-                        </span>
-
-                    </div>
-
-                    <div style="
-                        width:100%;
-                        height:13px;
-
-                        background:#eaf1fb;
-
-                        border-radius:20px;
-
-                        overflow:hidden;
-                    ">
-
-                        <div style="
-                            width:{width}%;
-
-                            height:100%;
-
-                            background:
-                                linear-gradient(
-                                    90deg,
-                                    {color},
-                                    #65b1ff
-                                );
-
-                            border-radius:20px;
-
-                            transform-origin:left;
-
-                            animation:
-                                barGrow
-                                1.2s
-                                cubic-bezier(
-                                    .2,
-                                    .8,
-                                    .2,
-                                    1
-                                )
-                                forwards;
-
-                            animation-delay:
-                                {index * 0.12}s;
-                        "></div>
-
-                    </div>
-
-                </div>
-                """
-
-
-            st.html(f"""
-            <div style="
-                min-height:390px;
-
-                padding:26px;
-
-                border-radius:20px;
-
-                background:white;
-
-                border:
-                    1px solid #dce9fa;
-
-                box-shadow:
-                    0 12px 35px
-                    rgba(23,105,255,0.07);
-
-                animation:
-                    fadeUp 1.3s ease-out;
-            ">
-
-                <div style="
-                    display:flex;
-                    align-items:center;
-                    gap:12px;
-
-                    margin-bottom:27px;
-                ">
-
-                    <div style="
-                        width:36px;
-                        height:36px;
-
-                        border-radius:11px;
-
-                        display:flex;
-                        align-items:center;
-                        justify-content:center;
-
-                        color:#1769ff;
-
-                        background:#edf4ff;
-
-                        font-size:11px;
-                        font-weight:900;
-                    ">
-                        BAR
-                    </div>
-
-                    <div style="
-                        color:#092f6d;
-
-                        font-size:18px;
-                        font-weight:850;
-                    ">
-                        Spending by Category
-                    </div>
-
-                </div>
-
-                {bar_rows}
-
-            </div>
-            """)
-
-
-    # --------------------------------------------------------
-    # PAYMENT DONUT
-    # --------------------------------------------------------
-
-    with chart_right:
-
-        if payment_totals.empty:
-
-            st.info("No payment data available.")
-
-        else:
-
-            total_payment = float(
-                payment_totals.sum()
+                if not dash_categories.empty
+                else 1
             )
 
-            radius = 78
+            bars = ""
 
-            circumference = (
-                2 *
-                math.pi *
-                radius
-            )
 
             colors = [
-                "#1769ff",
-                "#7257ef",
-                "#25b9c9",
-                "#45c982",
-                "#f1a92b",
-                "#e85ca8"
+                "#338df7",
+                "#4c8cf4",
+                "#3f83ee",
+                "#3982e8",
+                "#5a9bf8",
+                "#66b0ff"
             ]
 
-            # Build a CSS conic-gradient instead of SVG stroke segments.
-            # This renders reliably inside Streamlit's HTML component.
-            gradient_parts = []
-            cumulative_percent = 0.0
-            legend = ""
 
-            for index, (method, amount) in enumerate(
-                payment_totals.items()
+            for i, (
+                category,
+                amount
+            ) in enumerate(
+                dash_categories.items()
             ):
 
-                fraction = (
-                    amount / total_payment
-                    if total_payment > 0
-                    else 0
+                height = (
+                    amount
+                    / max_bar
+                    * 74
+                    if max_bar > 0
+                    else 5
                 )
 
-                percentage = (
-                    amount /
-                    total_payment *
-                    100
-                    if total_payment > 0
-                    else 0
+                height = max(
+                    height,
+                    6
                 )
 
-                color = colors[
-                    index % len(colors)
-                ]
 
-                start_percent = cumulative_percent
-                end_percent = (
-                    cumulative_percent + percentage
-                )
+                bars += f"""
+                <div class="bar-column">
 
-                gradient_parts.append(
-                    f"{color} {start_percent:.2f}% {end_percent:.2f}%"
-                )
-
-                cumulative_percent = end_percent
-
-                legend += f"""
-                <div style="
-                    display:flex;
-                    align-items:center;
-                    justify-content:space-between;
-
-                    margin-bottom:12px;
-
-                    font-size:11px;
-                ">
-
-                    <div style="
-                        display:flex;
-                        align-items:center;
-                        gap:8px;
-                    ">
-
-                        <span style="
-                            width:9px;
-                            height:9px;
-
-                            border-radius:50%;
-
-                            background:{color};
-                        "></span>
-
-                        <span style="
-                            color:#47678f;
-                            font-weight:600;
-                        ">
-                            {safe_text(method)}
-                        </span>
-
+                    <div
+                        class="bar-value"
+                        style="
+                            --delay:
+                            {i * .12 + .2:.2f}s;
+                        "
+                    >
+                        {money(amount)}
                     </div>
 
-                    <div style="
-                        color:#092f6d;
-                        font-weight:800;
-                    ">
-                        {percentage:.0f}%
+                    <div
+                        class="bar-shape"
+                        style="
+                            --height:
+                            {height:.2f}%;
+                            --delay:
+                            {i * .12 + .15:.2f}s;
+                            background:
+                            linear-gradient(
+                                180deg,
+                                {colors[i % len(colors)]},
+                                #397ce3
+                            );
+                        "
+                    ></div>
+
+                    <div class="bar-label">
+                        {escape(str(category))}
                     </div>
 
                 </div>
                 """
 
 
-            donut_gradient = ", ".join(gradient_parts)
+            render(
+                f"""
+                <div class="panel">
 
-            st.html(f"""
-            <div style="
-                min-height:390px;
+                    <div class="panel-header">
 
-                padding:26px;
+                        <div class="panel-title-wrap">
 
-                border-radius:20px;
+                            <div class="panel-icon">
+                                ▥
+                            </div>
 
-                background:white;
+                            <div>
 
-                border:
-                    1px solid #dce9fa;
+                                <div class="panel-title">
+                                    Spending by Category
+                                </div>
 
-                box-shadow:
-                    0 12px 35px
-                    rgba(23,105,255,0.07);
+                                <div class="panel-subtitle">
+                                    Category-wise expense distribution
+                                </div>
 
-                animation:
-                    fadeUp 1.45s ease-out;
-            ">
+                            </div>
 
-                <div style="
-                    display:flex;
-                    align-items:center;
-                    gap:12px;
+                        </div>
 
-                    margin-bottom:12px;
-                ">
+                        <div style="
+                            padding:7px 12px;
+                            border:1px solid #e1eafb;
+                            border-radius:9px;
+                            color:#385681;
+                            background:#fff;
+                            font-size:9px;
+                            font-weight:700;
+                        ">
+                            Amount
+                            <span style="
+                                margin-left:8px;
+                                color:#1769ff;
+                            ">
+                                ▾
+                            </span>
+                        </div>
 
-                    <div style="
-                        width:36px;
-                        height:36px;
-
-                        border-radius:11px;
-
-                        display:flex;
-                        align-items:center;
-                        justify-content:center;
-
-                        color:#1769ff;
-
-                        background:#edf4ff;
-
-                        font-size:10px;
-                        font-weight:900;
-                    ">
-                        PIE
                     </div>
 
-                    <div style="
-                        color:#092f6d;
+                    <div class="bar-chart">
 
-                        font-size:18px;
-                        font-weight:850;
-                    ">
-                        Spending by Payment Method
+                        <div class="chart-area">
+
+                            {bars}
+
+                        </div>
+
                     </div>
 
                 </div>
+                """
+            )
 
 
+        # ----------------------------------------------------
+        # DONUT CHART
+        # ----------------------------------------------------
+
+        with payment_col:
+
+            if dash_payments.empty:
+
+                donut_svg = ""
+
+                payment_legend = """
                 <div style="
-                    display:flex;
-                    align-items:center;
-                    gap:25px;
-
-                    margin-top:20px;
+                    color:#8b9bb5;
+                    font-size:10px;
                 ">
+                    No payment data
+                </div>
+                """
 
-                    <div style="
-                        position:relative;
+            else:
 
-                        width:220px;
-                        height:220px;
-                        flex-shrink:0;
-                    ">
+                donut_colors = [
+                    "#1769ff",
+                    "#7157ef",
+                    "#21bfd0",
+                    "#58b8f8",
+                    "#e84fb5",
+                    "#ff9c43"
+                ]
 
-                        <div style="
-                            width:220px;
-                            height:220px;
-                            border-radius:50%;
+                radius = 65
 
-                            background:
-                                conic-gradient(
-                                    from -90deg,
-                                    {donut_gradient}
-                                );
+                circumference = (
+                    2 * math.pi * radius
+                )
 
-                            display:flex;
-                            align-items:center;
-                            justify-content:center;
+                cumulative = 0
 
-                            box-shadow:
-                                0 10px 24px
-                                rgba(23,105,255,0.10);
+                donut_svg = ""
 
-                            animation:
-                                donutDraw 1.2s
-                                cubic-bezier(.2,.8,.2,1)
-                                forwards;
-                        ">
+                payment_legend = ""
 
-                            <div style="
-                                width:150px;
-                                height:150px;
-                                border-radius:50%;
-                                background:white;
 
-                                display:flex;
-                                flex-direction:column;
-                                align-items:center;
-                                justify-content:center;
-                            ">
+                for i, (
+                    method,
+                    amount
+                ) in enumerate(
+                    dash_payments.items()
+                ):
 
-                                <div style="
-                                    color:#092f6d;
-                                    font-size:20px;
-                                    font-weight:900;
-                                ">
-                                    {money(total_payment)}
+                    fraction = (
+                        float(amount)
+                        / dash_total
+                        if dash_total > 0
+                        else 0
+                    )
+
+                    dash = (
+                        fraction
+                        * circumference
+                    )
+
+                    offset = (
+                        -cumulative
+                    )
+
+                    color = (
+                        donut_colors[
+                            i % len(donut_colors)
+                        ]
+                    )
+
+
+                    donut_svg += f"""
+                    <circle
+                        class="donut-piece"
+                        cx="100"
+                        cy="100"
+                        r="{radius}"
+                        stroke="{color}"
+                        style="
+                            --dash:
+                            {dash:.2f}px
+                            {circumference:.2f}px;
+
+                            --circ:
+                            {circumference:.2f}px;
+
+                            --offset:
+                            {offset:.2f}px;
+
+                            --delay:
+                            {i * .12:.2f}s;
+                        "
+                    ></circle>
+                    """
+
+
+                    percent = (
+                        fraction
+                        * 100
+                    )
+
+
+                    payment_legend += f"""
+                    <div class="legend-row">
+
+                        <div
+                            class="legend-dot"
+                            style="
+                                background:
+                                {color};
+                            "
+                        ></div>
+
+                        <div class="legend-name">
+                            {escape(str(method))}
+                        </div>
+
+                        <div class="legend-percent">
+                            {percent:.0f}%
+                        </div>
+
+                        <div class="legend-amount">
+                            {money(amount)}
+                        </div>
+
+                    </div>
+                    """
+
+
+                    cumulative += dash
+
+
+            render(
+                f"""
+                <div class="panel">
+
+                    <div class="panel-header">
+
+                        <div class="panel-title-wrap">
+
+                            <div class="panel-icon">
+                                ▤
+                            </div>
+
+                            <div>
+
+                                <div class="panel-title">
+                                    Spending by Payment Method
                                 </div>
 
-                                <div style="
-                                    color:#7890b4;
-                                    font-size:10px;
-                                    margin-top:3px;
-                                ">
-                                    Total
+                                <div class="panel-subtitle">
+                                    Payment distribution
                                 </div>
 
                             </div>
@@ -2140,311 +3541,566 @@ if page == "Dashboard":
 
                     </div>
 
+                    <div class="donut-area">
 
-                    <div style="
-                        flex:1;
-                    ">
-                        {legend}
+                        <svg
+                            class="donut-svg"
+                            viewBox="0 0 200 200"
+                        >
+
+                            <circle
+                                class="donut-base"
+                                cx="100"
+                                cy="100"
+                                r="{radius}"
+                            ></circle>
+
+                            <g
+                                transform="
+                                    rotate(-90 100 100)
+                                "
+                            >
+
+                                {donut_svg}
+
+                            </g>
+
+                            <text
+                                x="100"
+                                y="97"
+                                text-anchor="middle"
+                                class="donut-center-value"
+                            >
+                                {money(dash_total)}
+                            </text>
+
+                            <text
+                                x="100"
+                                y="113"
+                                text-anchor="middle"
+                                class="donut-center-label"
+                            >
+                                Total
+                            </text>
+
+                        </svg>
+
+
+                        <div class="legend">
+
+                            {payment_legend}
+
+                        </div>
+
                     </div>
 
                 </div>
-
-            </div>
-            """)
-
-
-    st.write("")
+                """
+            )
 
 
-    # ========================================================
-    # RECENT TRANSACTIONS
-    # ========================================================
+        # ----------------------------------------------------
+        # RECENT TRANSACTIONS
+        # ----------------------------------------------------
 
-    st.html("""
-    <div style="
-        color:#092f6d;
-
-        font-size:18px;
-        font-weight:850;
-
-        margin-bottom:12px;
-    ">
-        Recent Transactions
-    </div>
-    """)
+        transaction_rows = ""
 
 
-    recent = filtered_df.head(6)
+        for _, row in filtered_df.head(6).iterrows():
 
+            expense_date = ""
 
-    if recent.empty:
+            if pd.notna(
+                row["EXPENSEDATE"]
+            ):
 
-        st.info("No transactions found.")
-
-    else:
-
-        table_rows = ""
-
-        for index, row in recent.iterrows():
-
-            transaction_date = (
-                row["EXPENSEDATE"].strftime(
-                    "%d %b %Y"
+                expense_date = (
+                    pd.to_datetime(
+                        row["EXPENSEDATE"]
+                    )
+                    .strftime(
+                        "%d %b %Y"
+                    )
                 )
-                if pd.notna(
-                    row["EXPENSEDATE"]
-                )
-                else "-"
-            )
 
-            category = safe_text(
-                row["CATEGORY"]
-            )
 
-            description = safe_text(
-                row["DESCRIPTIONTYPE"]
-            )
-
-            payment = safe_text(
-                row["PAYMENTMETHOD"]
-            )
-
-            amount = money(
-                row["AMOUNT"]
-            )
-
-            table_rows += f"""
+            transaction_rows += f"""
             <tr>
 
                 <td>
-                    {transaction_date}
+                    {expense_date}
                 </td>
 
                 <td>
-                    {description}
+                    {escape(
+                        str(
+                            row["DESCRIPTIONTYPE"]
+                        )
+                    )}
                 </td>
 
                 <td>
-                    <span style="
-                        display:inline-block;
 
-                        padding:
-                            5px
-                            10px;
-
-                        border-radius:999px;
-
-                        color:#1769ff;
-
-                        background:#edf4ff;
-
-                        font-size:10px;
-                        font-weight:800;
-                    ">
-                        {category}
+                    <span class="category-pill">
+                        {escape(
+                            str(
+                                row["CATEGORY"]
+                            )
+                        )}
                     </span>
+
                 </td>
 
                 <td>
-                    {payment}
+                    {escape(
+                        str(
+                            row["PAYMENTMETHOD"]
+                        )
+                    )}
                 </td>
 
-                <td style="
-                    font-weight:850;
-                    color:#092f6d;
-                ">
-                    {amount}
+                <td class="transaction-amount">
+                    {money(row["AMOUNT"])}
                 </td>
 
             </tr>
             """
 
 
-        st.html(f"""
-        <div style="
-            overflow:hidden;
+        if not transaction_rows:
 
-            border-radius:20px;
+            transaction_rows = """
+            <tr>
 
-            background:white;
+                <td
+                    colspan="5"
+                    style="
+                        text-align:center;
+                        padding:35px;
+                        color:#8191aa;
+                    "
+                >
+                    No transactions found
+                </td>
 
-            border:
-                1px solid #dce9fa;
+            </tr>
+            """
 
-            box-shadow:
-                0 12px 35px
-                rgba(23,105,255,0.07);
 
-            animation:
-                fadeUp 1.6s ease-out;
-        ">
+        render(
+            f"""
+            <div class="panel transactions-panel">
 
-            <table style="
-                width:100%;
+                <div class="panel-header">
 
-                border-collapse:collapse;
+                    <div class="panel-title-wrap">
 
-                font-family:
-                    Inter,
-                    Segoe UI,
-                    sans-serif;
-            ">
+                        <div class="panel-icon">
+                            ▣
+                        </div>
 
-                <thead>
+                        <div>
 
-                    <tr style="
-                        background:#f5f8fd;
+                            <div class="panel-title">
+                                Recent Transactions
+                            </div>
+
+                            <div class="panel-subtitle">
+                                Latest expense activity
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                    <div style="
+                        padding:7px 12px;
+                        border:1px solid #dce8fa;
+                        border-radius:9px;
+                        color:#1769ff;
+                        font-size:9px;
+                        font-weight:700;
                     ">
+                        View All →
+                    </div>
 
-                        <th style="
-                            padding:14px;
-                            text-align:left;
-                            color:#7188aa;
-                            font-size:10px;
-                        ">
-                            DATE
-                        </th>
+                </div>
 
-                        <th style="
-                            padding:14px;
-                            text-align:left;
-                            color:#7188aa;
-                            font-size:10px;
-                        ">
-                            DESCRIPTION
-                        </th>
 
-                        <th style="
-                            padding:14px;
-                            text-align:left;
-                            color:#7188aa;
-                            font-size:10px;
-                        ">
-                            CATEGORY
-                        </th>
+                <table class="transaction-table">
 
-                        <th style="
-                            padding:14px;
-                            text-align:left;
-                            color:#7188aa;
-                            font-size:10px;
-                        ">
-                            PAYMENT
-                        </th>
+                    <thead>
 
-                        <th style="
-                            padding:14px;
-                            text-align:left;
-                            color:#7188aa;
-                            font-size:10px;
-                        ">
-                            AMOUNT
-                        </th>
+                        <tr>
 
-                    </tr>
+                            <th>
+                                Date
+                            </th>
 
-                </thead>
+                            <th>
+                                Description
+                            </th>
 
-                <tbody>
+                            <th>
+                                Category
+                            </th>
 
-                    {table_rows}
+                            <th>
+                                Payment Method
+                            </th>
 
-                </tbody>
+                            <th>
+                                Amount
+                            </th>
 
-            </table>
+                        </tr>
 
-        </div>
-        """)
+                    </thead>
+
+                    <tbody>
+
+                        {transaction_rows}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+            """
+        )
+
+
+    # ========================================================
+    # RIGHT SIDE
+    # ========================================================
+
+    with right_col:
+
+        top_category_amount = (
+            float(
+                dash_categories.iloc[0]
+            )
+            if not dash_categories.empty
+            else 0
+        )
+
+
+        top_category_percent = (
+            top_category_amount
+            / dash_total
+            * 100
+            if dash_total > 0
+            else 0
+        )
+
+
+        render(
+            f"""
+            <div class="panel insights-panel">
+
+                <div class="panel-header">
+
+                    <div class="panel-title-wrap">
+
+                        <div class="panel-icon">
+                            *
+                        </div>
+
+                        <div>
+
+                            <div class="panel-title">
+                                AI Insights
+                            </div>
+
+                            <div class="panel-subtitle">
+                                Smart spending observations
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                    <div style="
+                        padding:6px 10px;
+                        border-radius:15px;
+                        color:#1769ff;
+                        background:#eaf3ff;
+                        font-size:8px;
+                        font-weight:800;
+                    ">
+                        Smart
+                    </div>
+
+                </div>
+
+
+                <div class="insight-item"
+                     style="--delay:.1s;">
+
+                    <div class="insight-icon">
+                        Rs
+                    </div>
+
+                    <div class="insight-text">
+
+                        You spent the most on
+                        <strong>
+                            {escape(str(dash_category))}
+                        </strong>
+                        ({top_category_percent:.0f}%
+                        of your total expenses).
+
+                    </div>
+
+                </div>
+
+
+                <div class="insight-item"
+                     style="--delay:.18s;">
+
+                    <div
+                        class="insight-icon"
+                        style="
+                            background:#e9fbf7;
+                            color:#13ad79;
+                        "
+                    >
+                        ↗
+                    </div>
+
+                    <div class="insight-text">
+
+                        Your current spending dashboard
+                        contains
+                        <strong>
+                            {dash_count}
+                        </strong>
+                        recorded transactions.
+
+                    </div>
+
+                </div>
+
+
+                <div class="insight-item"
+                     style="--delay:.26s;">
+
+                    <div
+                        class="insight-icon"
+                        style="
+                            background:#f0edff;
+                            color:#7359f5;
+                        "
+                    >
+                        #
+                    </div>
+
+                    <div class="insight-text">
+
+                        Your average transaction value
+                        is
+                        <strong>
+                            {money(dash_average)}
+                        </strong>.
+
+                    </div>
+
+                </div>
+
+
+                <div class="insight-item"
+                     style="--delay:.34s;">
+
+                    <div
+                        class="insight-icon"
+                        style="
+                            background:#e9f7ff;
+                            color:#087bdc;
+                        "
+                    >
+                        +
+                    </div>
+
+                    <div class="insight-text">
+
+                        Keep adding expenses to make
+                        your spending analytics more
+                        detailed.
+
+                    </div>
+
+                </div>
+
+
+                <div class="ai-decoration">
+
+                    <div class="ai-message">
+                        Keep going!
+                    </div>
+
+                    <div class="ai-robot"></div>
+
+                </div>
+
+            </div>
+            """
+        )
+
+
+        # ----------------------------------------------------
+        # QUICK SUMMARY
+        # ----------------------------------------------------
+
+        summary_percent = min(
+            top_category_percent,
+            100
+        )
+
+
+        render(
+            f"""
+            <div class="panel summary-panel">
+
+                <div class="panel-header">
+
+                    <div class="panel-title-wrap">
+
+                        <div class="panel-icon">
+                            !
+                        </div>
+
+                        <div>
+
+                            <div class="panel-title">
+                                Quick Summary
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="summary-body">
+
+                    <div class="summary-line">
+
+                        <div class="summary-icon">
+                            Rs
+                        </div>
+
+                        <div>
+
+                            You spent
+                            <strong>
+                                {money(top_category_amount)}
+                            </strong>
+                            on
+                            <strong>
+                                {escape(str(dash_category))}
+                            </strong>
+                            this period.
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="progress">
+
+                        <div
+                            class="progress-value"
+                            style="
+                                --progress:
+                                {summary_percent:.2f}%;
+                            "
+                        ></div>
+
+                    </div>
+
+
+                    <div style="
+                        margin-top:7px;
+                        color:#7488aa;
+                        font-size:8px;
+                    ">
+                        {top_category_percent:.0f}%
+                        of total spending
+                    </div>
+
+                </div>
+
+            </div>
+            """
+        )
 
 
 # ============================================================
-# ADD EXPENSE
+# GO TO ADD EXPENSE
+# ============================================================
+
+if page == "Dashboard" and st.session_state.get(
+    "go_add",
+    False
+):
+
+    st.session_state["go_add"] = False
+
+    st.rerun()
+
+
+# ============================================================
+# ADD EXPENSE PAGE
 # ============================================================
 
 elif page == "Add Expense":
 
-    st.html("""
-    <div style="
-        padding:32px;
-
-        border-radius:25px;
-
-        background:
-            linear-gradient(
-                120deg,
-                #092f6d,
-                #1769ff
-            );
-
-        color:white;
-
-        box-shadow:
-            0 20px 45px
-            rgba(23,105,255,0.20);
-
-        animation:
-            fadeUp 0.7s ease-out;
-    ">
-
+    render(
+        """
         <div style="
-            font-size:12px;
-            font-weight:800;
-            letter-spacing:1.3px;
-            opacity:0.8;
+            margin-bottom:20px;
+            animation:fadeUp .6s both;
         ">
-            EXPENSE MANAGEMENT
+
+            <div style="
+                color:#092d6c;
+                font-size:25px;
+                font-weight:900;
+            ">
+                Add New Expense
+            </div>
+
+            <div style="
+                margin-top:5px;
+                color:#7b8eac;
+                font-size:11px;
+            ">
+                Add a transaction directly to your ExpenseAI database.
+            </div>
+
         </div>
-
-        <div style="
-            font-size:34px;
-            font-weight:900;
-            margin-top:8px;
-        ">
-            Add New Expense
-        </div>
-
-        <div style="
-            margin-top:8px;
-            color:#d8e7ff;
-        ">
-            Add a transaction directly to your SQL Server database.
-        </div>
-
-    </div>
-    """)
-
-
-    st.write("")
-
-
-    categories = [
-        "Food",
-        "Transport",
-        "Entertainment",
-        "Shopping",
-        "Education",
-        "Bills",
-        "Health",
-        "Other"
-    ]
-
-    payment_methods = [
-        "UPI",
-        "Cash",
-        "Card",
-        "Net Banking"
-    ]
+        """
+    )
 
 
     with st.form(
-        "expense_form",
-        clear_on_submit=True
+        "add_expense_form"
     ):
 
-        col1, col2 = st.columns(2)
+        st.markdown(
+            '<div class="form-card">',
+            unsafe_allow_html=True
+        )
 
 
-        with col1:
+        c1, c2 = st.columns(
+            2,
+            gap="large"
+        )
+
+
+        with c1:
 
             expense_date = st.date_input(
                 "Expense Date",
@@ -2453,446 +4109,570 @@ elif page == "Add Expense":
 
             category = st.selectbox(
                 "Category",
-                categories
+                [
+                    "Food",
+                    "Transport",
+                    "Entertainment",
+                    "Shopping",
+                    "Education",
+                    "Bills",
+                    "Health",
+                    "Other"
+                ]
             )
 
-            description = st.text_input(
-                "Description",
-                placeholder="Example: Lunch at college"
+            payment_method = st.selectbox(
+                "Payment Method",
+                [
+                    "UPI",
+                    "Cash",
+                    "Credit Card",
+                    "Debit Card",
+                    "Net Banking",
+                    "Bank Transfer",
+                    "Other"
+                ]
             )
 
 
-        with col2:
+        with c2:
 
             amount = st.number_input(
                 "Amount",
                 min_value=0.01,
-                step=10.0,
+                value=250.00,
+                step=50.00,
                 format="%.2f"
             )
 
-            payment = st.selectbox(
-                "Payment Method",
-                payment_methods
+            description = st.text_input(
+                "Description",
+                placeholder="Example: Bought biryani"
             )
 
 
-        st.write("")
+        st.markdown(
+            "</div>",
+            unsafe_allow_html=True
+        )
 
 
         submitted = st.form_submit_button(
-            "Add Expense",
+            "Save Expense",
             use_container_width=True
         )
 
 
-        if submitted:
+    if submitted:
 
-            if not description.strip():
+        if not description.strip():
 
-                st.error(
-                    "Please enter a description."
-                )
-
-            elif amount <= 0:
-
-                st.error(
-                    "Amount must be greater than zero."
-                )
-
-            else:
-
-                try:
-
-                    add_expense(
-                        expense_date,
-                        category,
-                        description.strip(),
-                        amount,
-                        payment
-                    )
-
-                    st.success(
-                        "Expense added successfully."
-                    )
-
-                    st.rerun()
-
-                except Exception as error:
-
-                    st.error(
-                        "Unable to add expense."
-                    )
-
-
-# ============================================================
-# TRANSACTIONS
-# ============================================================
-
-elif page == "Transactions":
-
-    st.html("""
-    <div style="animation:fadeUp 0.7s ease-out;">
-
-        <div style="
-            color:#1769ff;
-            font-size:11px;
-            font-weight:850;
-            letter-spacing:1.4px;
-        ">
-            TRANSACTION CENTER
-        </div>
-
-        <div style="
-            color:#092f6d;
-            font-size:34px;
-            font-weight:900;
-            margin-top:5px;
-        ">
-            All Transactions
-        </div>
-
-        <div style="
-            color:#7890b4;
-            margin-top:5px;
-        ">
-            View, manage and delete your recorded expenses.
-        </div>
-
-    </div>
-    """)
-
-    st.write("")
-
-    if df.empty:
-
-        st.info("No transactions available.")
-
-    else:
-
-        transaction_view = df.copy()
-
-        transaction_view["EXPENSEDATE"] = (
-            transaction_view["EXPENSEDATE"]
-            .dt.strftime("%d %b %Y")
-        )
-
-        transaction_view["AMOUNT"] = (
-            transaction_view["AMOUNT"]
-            .apply(money)
-        )
-
-        transaction_view = transaction_view.rename(
-            columns={
-                "EXPENSEID": "ID",
-                "EXPENSEDATE": "Date",
-                "CATEGORY": "Category",
-                "DESCRIPTIONTYPE": "Description",
-                "AMOUNT": "Amount",
-                "PAYMENTMETHOD": "Payment Method"
-            }
-        )
-
-        st.dataframe(
-            transaction_view,
-            use_container_width=True,
-            hide_index=True
-        )
-
-        st.write("")
-
-        # --------------------------------------------------------
-        # DELETE EXPENSE SECTION
-        # --------------------------------------------------------
-
-        st.html("""
-        <div style="
-            padding:24px;
-            border-radius:20px;
-            background:linear-gradient(145deg,#ffffff,#fff7f7);
-            border:1px solid #f2dada;
-            box-shadow:0 12px 30px rgba(220,53,69,0.06);
-            animation:fadeUp 0.8s ease-out;
-        ">
-            <div style="
-                color:#c62828;
-                font-size:11px;
-                font-weight:850;
-                letter-spacing:1.4px;
-            ">
-                EXPENSE MANAGEMENT
-            </div>
-
-            <div style="
-                color:#092f6d;
-                font-size:24px;
-                font-weight:900;
-                margin-top:5px;
-            ">
-                Delete Transaction
-            </div>
-
-            <div style="
-                color:#7890b4;
-                font-size:13px;
-                margin-top:5px;
-            ">
-                Select a transaction ID below to permanently remove it from SQL Server.
-            </div>
-        </div>
-        """)
-
-        st.write("")
-
-        delete_col1, delete_col2 = st.columns([2, 1])
-
-        with delete_col1:
-
-            delete_options = df[
-                [
-                    "EXPENSEID",
-                    "EXPENSEDATE",
-                    "CATEGORY",
-                    "DESCRIPTIONTYPE",
-                    "AMOUNT",
-                    "PAYMENTMETHOD"
-                ]
-            ].copy()
-
-            delete_options["DISPLAY"] = delete_options.apply(
-                lambda row:
-                    f'#{int(row["EXPENSEID"])} | '
-                    f'{row["EXPENSEDATE"].strftime("%d %b %Y")} | '
-                    f'{row["CATEGORY"]} | '
-                    f'{row["DESCRIPTIONTYPE"]} | '
-                    f'₹{float(row["AMOUNT"]):,.2f} | '
-                    f'{row["PAYMENTMETHOD"]}',
-                axis=1
+            st.error(
+                "Please enter a description."
             )
 
-            selected_display = st.selectbox(
-                "Choose transaction to delete",
-                delete_options["DISPLAY"].tolist(),
-                key="delete_transaction_select"
+        elif amount <= 0:
+
+            st.error(
+                "Amount must be greater than zero."
             )
 
-            selected_id = int(
-                delete_options.loc[
-                    delete_options["DISPLAY"] == selected_display,
-                    "EXPENSEID"
-                ].iloc[0]
-            )
-
-        with delete_col2:
-
-            st.write("")
-
-            delete_clicked = st.button(
-                "Delete Selected Transaction",
-                use_container_width=True,
-                key="delete_selected_transaction"
-            )
-
-        if delete_clicked:
+        else:
 
             try:
 
-                delete_expense(selected_id)
+                insert_expense(
+                    expense_date,
+                    category,
+                    description.strip(),
+                    amount,
+                    payment_method
+                )
 
                 st.success(
-                    f"Transaction #{selected_id} deleted successfully."
+                    "Expense added successfully."
                 )
 
                 st.rerun()
 
-            except Exception as error:
+            except Exception as e:
 
                 st.error(
-                    "Unable to delete the selected transaction."
+                    "Unable to save expense."
                 )
 
+                st.code(
+                    str(e)
+                )
+
+
 # ============================================================
-# ANALYTICS
+# TRANSACTIONS PAGE
 # ============================================================
 
-elif page == "Analytics":
+elif page == "Transactions":
 
-    st.html("""
-    <div style="
-        animation:
-            fadeUp 0.7s ease-out;
-    ">
-
+    render(
+        """
         <div style="
-            color:#1769ff;
-            font-size:11px;
-            font-weight:850;
-            letter-spacing:1.4px;
+            margin-bottom:20px;
+            animation:fadeUp .6s both;
         ">
-            SPENDING ANALYTICS
+
+            <div style="
+                color:#092d6c;
+                font-size:25px;
+                font-weight:900;
+            ">
+                Transactions
+            </div>
+
+            <div style="
+                margin-top:5px;
+                color:#7b8eac;
+                font-size:11px;
+            ">
+                Search, filter and review every recorded expense.
+            </div>
+
         </div>
-
-        <div style="
-            color:#092f6d;
-            font-size:34px;
-            font-weight:900;
-            margin-top:5px;
-        ">
-            Financial Analytics
-        </div>
-
-        <div style="
-            color:#7890b4;
-            margin-top:5px;
-        ">
-            Understand how your money is distributed.
-        </div>
-
-    </div>
-    """)
-
-
-    st.write("")
+        """
+    )
 
 
     if df.empty:
 
-        st.info("Add some expenses to see analytics.")
+        st.info(
+            "No transactions available."
+        )
+
+    else:
+
+        c1, c2, c3 = st.columns(3)
+
+
+        with c1:
+
+            transaction_category = st.selectbox(
+                "Category",
+                ["All"]
+                + sorted(
+                    df["CATEGORY"]
+                    .unique()
+                    .tolist()
+                )
+            )
+
+
+        with c2:
+
+            transaction_payment = st.selectbox(
+                "Payment Method",
+                ["All"]
+                + sorted(
+                    df["PAYMENTMETHOD"]
+                    .unique()
+                    .tolist()
+                )
+            )
+
+
+        with c3:
+
+            transaction_search = st.text_input(
+                "Search"
+            )
+
+
+        transactions = df.copy()
+
+
+        if transaction_category != "All":
+
+            transactions = transactions[
+                transactions["CATEGORY"]
+                == transaction_category
+            ]
+
+
+        if transaction_payment != "All":
+
+            transactions = transactions[
+                transactions["PAYMENTMETHOD"]
+                == transaction_payment
+            ]
+
+
+        if transaction_search.strip():
+
+            transactions = transactions[
+                transactions[
+                    "DESCRIPTIONTYPE"
+                ]
+                .str.contains(
+                    transaction_search,
+                    case=False,
+                    na=False
+                )
+            ]
+
+
+        display_df = transactions.copy()
+
+
+        if not display_df.empty:
+
+            display_df["EXPENSEDATE"] = (
+                display_df["EXPENSEDATE"]
+                .dt.strftime(
+                    "%d %b %Y"
+                )
+            )
+
+            display_df["AMOUNT"] = (
+                display_df["AMOUNT"]
+                .apply(money)
+            )
+
+
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+# ============================================================
+# ANALYTICS PAGE
+# ============================================================
+
+elif page == "Analytics":
+
+    render(
+        """
+        <div style="
+            margin-bottom:20px;
+            animation:fadeUp .6s both;
+        ">
+
+            <div style="
+                color:#092d6c;
+                font-size:25px;
+                font-weight:900;
+            ">
+                Analytics
+            </div>
+
+            <div style="
+                margin-top:5px;
+                color:#7b8eac;
+                font-size:11px;
+            ">
+                Explore your spending patterns through interactive visualizations.
+            </div>
+
+        </div>
+        """
+    )
+
+
+    if df.empty:
+
+        st.info(
+            "Add expenses to generate analytics."
+        )
 
     else:
 
         analytics_category = (
             df.groupby("CATEGORY")["AMOUNT"]
             .sum()
-            .sort_values(ascending=False)
+            .sort_values(
+                ascending=False
+            )
         )
+
 
         analytics_payment = (
             df.groupby("PAYMENTMETHOD")["AMOUNT"]
             .sum()
-            .sort_values(ascending=False)
+            .sort_values(
+                ascending=False
+            )
         )
 
 
-        col1, col2 = st.columns(2)
+        a, b = st.columns(
+            2,
+            gap="small"
+        )
 
 
-        with col1:
+        with a:
 
-            st.html("""
-            <div style="
-                padding:22px;
+            max_value = float(
+                analytics_category.max()
+            )
 
-                border-radius:20px;
+            analytics_bars = ""
 
-                background:white;
 
-                border:
-                    1px solid #dce9fa;
+            for i, (
+                category,
+                amount
+            ) in enumerate(
+                analytics_category.items()
+            ):
 
-                box-shadow:
-                    0 12px 30px
-                    rgba(23,105,255,0.07);
-            ">
+                height = (
+                    amount
+                    / max_value
+                    * 75
+                )
 
-                <div style="
-                    color:#092f6d;
-                    font-size:18px;
-                    font-weight:850;
-                ">
-                    Category Distribution
+
+                analytics_bars += f"""
+                <div class="bar-column">
+
+                    <div
+                        class="bar-value"
+                        style="
+                            --delay:
+                            {i*.1:.2f}s;
+                        "
+                    >
+                        {money(amount)}
+                    </div>
+
+                    <div
+                        class="bar-shape"
+                        style="
+                            --height:
+                            {height:.2f}%;
+
+                            --delay:
+                            {i*.1:.15f}s;
+                        "
+                    ></div>
+
+                    <div class="bar-label">
+                        {escape(str(category))}
+                    </div>
+
                 </div>
+                """
 
-            </div>
-            """)
 
-            render_animated_bar_chart(
-                analytics_category,
-                "Category Distribution",
-                "BAR",
-                390
+            render(
+                f"""
+                <div class="panel">
+
+                    <div class="panel-header">
+
+                        <div class="panel-title-wrap">
+
+                            <div class="panel-icon">
+                                ▥
+                            </div>
+
+                            <div class="panel-title">
+                                Category Analytics
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                    <div class="bar-chart">
+
+                        <div class="chart-area">
+
+                            {analytics_bars}
+
+                        </div>
+
+                    </div>
+
+                </div>
+                """
             )
 
 
-        with col2:
+        with b:
 
-            st.html("""
-            <div style="
-                padding:22px;
+            analytics_total = float(
+                analytics_category.sum()
+            )
 
-                border-radius:20px;
+            radius = 65
 
-                background:white;
+            circumference = (
+                2 * math.pi * radius
+            )
 
-                border:
-                    1px solid #dce9fa;
+            cumulative = 0
 
-                box-shadow:
-                    0 12px 30px
-                    rgba(23,105,255,0.07);
-            ">
+            svg = ""
 
-                <div style="
-                    color:#092f6d;
-                    font-size:18px;
-                    font-weight:850;
-                ">
-                    Payment Method Distribution
+            colors = [
+                "#1769ff",
+                "#7359f5",
+                "#22b9d6",
+                "#e94fba",
+                "#ff9c43",
+                "#43c88c"
+            ]
+
+
+            for i, (
+                category,
+                amount
+            ) in enumerate(
+                analytics_category.items()
+            ):
+
+                fraction = (
+                    amount
+                    / analytics_total
+                )
+
+                dash = (
+                    fraction
+                    * circumference
+                )
+
+                offset = -cumulative
+
+
+                svg += f"""
+                <circle
+                    class="donut-piece"
+                    cx="100"
+                    cy="100"
+                    r="{radius}"
+                    stroke="{colors[i % len(colors)]}"
+                    style="
+                        --dash:
+                        {dash:.2f}px
+                        {circumference:.2f}px;
+
+                        --circ:
+                        {circumference:.2f}px;
+
+                        --offset:
+                        {offset:.2f}px;
+
+                        --delay:
+                        {i*.12:.2f}s;
+                    "
+                ></circle>
+                """
+
+
+                cumulative += dash
+
+
+            render(
+                f"""
+                <div class="panel">
+
+                    <div class="panel-header">
+
+                        <div class="panel-title-wrap">
+
+                            <div class="panel-icon">
+                                ◉
+                            </div>
+
+                            <div class="panel-title">
+                                Category Distribution
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                    <div class="donut-area">
+
+                        <svg
+                            class="donut-svg"
+                            viewBox="0 0 200 200"
+                        >
+
+                            <circle
+                                class="donut-base"
+                                cx="100"
+                                cy="100"
+                                r="{radius}"
+                            ></circle>
+
+                            <g
+                                transform="
+                                    rotate(-90 100 100)
+                                "
+                            >
+                                {svg}
+                            </g>
+
+                            <text
+                                x="100"
+                                y="98"
+                                text-anchor="middle"
+                                class="donut-center-value"
+                            >
+                                {money(analytics_total)}
+                            </text>
+
+                            <text
+                                x="100"
+                                y="114"
+                                text-anchor="middle"
+                                class="donut-center-label"
+                            >
+                                Total
+                            </text>
+
+                        </svg>
+
+                    </div>
+
                 </div>
-
-            </div>
-            """)
-
-            render_animated_bar_chart(
-                analytics_payment,
-                "Payment Method Distribution",
-                "PAY",
-                390
+                """
             )
 
 
 # ============================================================
-# INSIGHTS
+# INSIGHTS PAGE
 # ============================================================
 
 elif page == "Insights":
 
-    st.html("""
-    <div style="
-        animation:
-            fadeUp 0.7s ease-out;
-    ">
-
+    render(
+        """
         <div style="
-            color:#1769ff;
-            font-size:11px;
-            font-weight:850;
-            letter-spacing:1.4px;
+            margin-bottom:20px;
+            animation:fadeUp .6s both;
         ">
-            INTELLIGENT INSIGHTS
+
+            <div style="
+                color:#092d6c;
+                font-size:25px;
+                font-weight:900;
+            ">
+                AI Insights
+            </div>
+
+            <div style="
+                margin-top:5px;
+                color:#7b8eac;
+                font-size:11px;
+            ">
+                Intelligent observations generated from your expense data.
+            </div>
+
         </div>
-
-        <div style="
-            color:#092f6d;
-            font-size:34px;
-            font-weight:900;
-            margin-top:5px;
-        ">
-            Spending Insights
-        </div>
-
-        <div style="
-            color:#7890b4;
-            margin-top:5px;
-        ">
-            Simple observations generated from your expense data.
-        </div>
-
-    </div>
-    """)
-
-
-    st.write("")
+        """
+    )
 
 
     if df.empty:
@@ -2903,291 +4683,293 @@ elif page == "Insights":
 
     else:
 
+        top_category_amount = float(
+            category_totals.iloc[0]
+        )
+
+        top_category_share = (
+            top_category_amount
+            / total_expense
+            * 100
+        )
+
         largest_row = df.loc[
             df["AMOUNT"].idxmax()
         ]
 
-        largest_description = safe_text(
-            largest_row["DESCRIPTIONTYPE"]
-        )
-
-        largest_amount = money(
+        largest_amount = float(
             largest_row["AMOUNT"]
         )
 
-        top_amount = (
-            category_totals.iloc[0]
-            if not category_totals.empty
-            else 0
+        largest_description = (
+            str(
+                largest_row[
+                    "DESCRIPTIONTYPE"
+                ]
+            )
         )
 
-        top_share = (
-            top_amount /
-            total_expense *
-            100
-            if total_expense > 0
-            else 0
+        largest_category = (
+            str(
+                largest_row[
+                    "CATEGORY"
+                ]
+            )
         )
 
-        most_used_payment = (
+        top_payment = (
             payment_totals.index[0]
             if not payment_totals.empty
             else "None"
         )
 
 
-        insight1, insight2, insight3 = st.columns(3)
+        render(
+            f"""
+            <div class="metric-grid">
 
+                <div
+                    class="metric-card"
+                    style="
+                        --accent:#1769ff;
+                        --delay:.05s;
+                    "
+                >
 
-        with insight1:
+                    <div class="metric-icon">
+                        AI
+                    </div>
 
-            st.html(f"""
-            <div style="
-                min-height:190px;
+                    <div class="metric-content">
 
-                padding:25px;
+                        <div class="metric-label">
+                            Top Category
+                        </div>
 
-                border-radius:20px;
+                        <div class="metric-value">
+                            {escape(top_category)}
+                        </div>
 
-                background:
-                    linear-gradient(
-                        145deg,
-                        #ffffff,
-                        #f1f7ff
-                    );
+                        <div class="metric-small">
+                            <strong>
+                                {top_category_share:.0f}%
+                            </strong>
+                            of spending
+                        </div>
 
-                border:
-                    1px solid #dce9fa;
+                    </div>
 
-                box-shadow:
-                    0 12px 30px
-                    rgba(23,105,255,0.07);
-
-                animation:
-                    fadeUp 0.8s ease-out;
-            ">
-
-                <div style="
-                    width:45px;
-                    height:45px;
-
-                    border-radius:14px;
-
-                    display:flex;
-                    align-items:center;
-                    justify-content:center;
-
-                    color:#1769ff;
-
-                    background:#eaf2ff;
-
-                    font-weight:900;
-                ">
-                    TOP
                 </div>
 
-                <div style="
-                    color:#092f6d;
 
-                    font-size:17px;
-                    font-weight:850;
+                <div
+                    class="metric-card"
+                    style="
+                        --accent:#e94fba;
+                        --delay:.12s;
+                    "
+                >
 
-                    margin-top:18px;
-                ">
-                    Highest Spending Category
+                    <div class="metric-icon">
+                        MAX
+                    </div>
+
+                    <div class="metric-content">
+
+                        <div class="metric-label">
+                            Largest Expense
+                        </div>
+
+                        <div class="metric-value">
+                            {money(largest_amount)}
+                        </div>
+
+                        <div class="metric-small">
+                            {escape(largest_description)}
+                        </div>
+
+                    </div>
+
                 </div>
 
-                <div style="
-                    color:#1769ff;
 
-                    font-size:24px;
-                    font-weight:900;
+                <div
+                    class="metric-card"
+                    style="
+                        --accent:#12b878;
+                        --delay:.19s;
+                    "
+                >
 
-                    margin-top:7px;
-                ">
-                    {safe_text(top_category)}
+                    <div class="metric-icon">
+                        PM
+                    </div>
+
+                    <div class="metric-content">
+
+                        <div class="metric-label">
+                            Main Payment
+                        </div>
+
+                        <div class="metric-value">
+                            {escape(top_payment)}
+                        </div>
+
+                        <div class="metric-small">
+                            Most used payment method
+                        </div>
+
+                    </div>
+
                 </div>
 
-                <div style="
-                    color:#7890b4;
 
-                    font-size:12px;
+                <div
+                    class="metric-card"
+                    style="
+                        --accent:#7359f5;
+                        --delay:.26s;
+                    "
+                >
 
-                    margin-top:5px;
-                ">
-                    {top_share:.1f}% of your total spending
-                </div>
+                    <div class="metric-icon">
+                        AVG
+                    </div>
 
-            </div>
-            """)
+                    <div class="metric-content">
 
+                        <div class="metric-label">
+                            Average
+                        </div>
 
-        with insight2:
+                        <div class="metric-value">
+                            {money(average_expense)}
+                        </div>
 
-            st.html(f"""
-            <div style="
-                min-height:190px;
+                        <div class="metric-small">
+                            Per transaction
+                        </div>
 
-                padding:25px;
+                    </div>
 
-                border-radius:20px;
-
-                background:
-                    linear-gradient(
-                        145deg,
-                        #ffffff,
-                        #f8f4ff
-                    );
-
-                border:
-                    1px solid #e6ddff;
-
-                box-shadow:
-                    0 12px 30px
-                    rgba(109,79,255,0.07);
-
-                animation:
-                    fadeUp 1s ease-out;
-            ">
-
-                <div style="
-                    width:45px;
-                    height:45px;
-
-                    border-radius:14px;
-
-                    display:flex;
-                    align-items:center;
-                    justify-content:center;
-
-                    color:#704cf0;
-
-                    background:#f0ebff;
-
-                    font-weight:900;
-                ">
-                    MAX
-                </div>
-
-                <div style="
-                    color:#092f6d;
-
-                    font-size:17px;
-                    font-weight:850;
-
-                    margin-top:18px;
-                ">
-                    Largest Transaction
-                </div>
-
-                <div style="
-                    color:#704cf0;
-
-                    font-size:24px;
-                    font-weight:900;
-
-                    margin-top:7px;
-                ">
-                    {largest_amount}
-                </div>
-
-                <div style="
-                    color:#7890b4;
-
-                    font-size:12px;
-
-                    margin-top:5px;
-                ">
-                    {largest_description}
                 </div>
 
             </div>
-            """)
+            """
+        )
 
 
-        with insight3:
+        render(
+            f"""
+            <div class="panel">
 
-            st.html(f"""
-            <div style="
-                min-height:190px;
+                <div class="panel-header">
 
-                padding:25px;
+                    <div class="panel-title-wrap">
 
-                border-radius:20px;
+                        <div class="panel-icon">
+                            AI
+                        </div>
 
-                background:
-                    linear-gradient(
-                        145deg,
-                        #ffffff,
-                        #f0fffa
-                    );
+                        <div>
 
-                border:
-                    1px solid #d6f3e7;
+                            <div class="panel-title">
+                                Smart Spending Observations
+                            </div>
 
-                box-shadow:
-                    0 12px 30px
-                    rgba(32,189,117,0.07);
+                            <div class="panel-subtitle">
+                                Generated from your recorded transaction data
+                            </div>
 
-                animation:
-                    fadeUp 1.2s ease-out;
-            ">
+                        </div>
 
-                <div style="
-                    width:45px;
-                    height:45px;
+                    </div>
 
-                    border-radius:14px;
-
-                    display:flex;
-                    align-items:center;
-                    justify-content:center;
-
-                    color:#16a66b;
-
-                    background:#e5faf1;
-
-                    font-weight:900;
-                ">
-                    PAY
                 </div>
 
-                <div style="
-                    color:#092f6d;
-
-                    font-size:17px;
-                    font-weight:850;
-
-                    margin-top:18px;
-                ">
-                    Most Used Payment
-                </div>
 
                 <div style="
-                    color:#16a66b;
-
-                    font-size:24px;
-                    font-weight:900;
-
-                    margin-top:7px;
+                    padding:12px;
                 ">
-                    {safe_text(most_used_payment)}
-                </div>
 
-                <div style="
-                    color:#7890b4;
+                    <div
+                        class="insight-item"
+                        style="--delay:.1s;"
+                    >
 
-                    font-size:12px;
+                        <div class="insight-icon">
+                            01
+                        </div>
 
-                    margin-top:5px;
-                ">
-                    Most frequent payment method
+                        <div class="insight-text">
+
+                            Your highest spending category is
+                            <strong>
+                                {escape(top_category)}
+                            </strong>,
+                            accounting for
+                            <strong>
+                                {top_category_share:.1f}%
+                            </strong>
+                            of recorded spending.
+
+                        </div>
+
+                    </div>
+
+
+                    <div
+                        class="insight-item"
+                        style="--delay:.18s;"
+                    >
+
+                        <div class="insight-icon">
+                            02
+                        </div>
+
+                        <div class="insight-text">
+
+                            Your largest recorded transaction is
+                            <strong>
+                                {money(largest_amount)}
+                            </strong>
+                            for
+                            <strong>
+                                {escape(largest_description)}
+                            </strong>
+                            under
+                            <strong>
+                                {escape(largest_category)}
+                            </strong>.
+
+                        </div>
+
+                    </div>
+
+
+                    <div
+                        class="insight-item"
+                        style="--delay:.26s;"
+                    >
+
+                        <div class="insight-icon">
+                            03
+                        </div>
+
+                        <div class="insight-text">
+
+                            The payment method with the highest
+                            recorded spending is
+                            <strong>
+                                {escape(top_payment)}
+                            </strong>.
+
+                        </div>
+
+                    </div>
+
                 </div>
 
             </div>
-            """)
-
-
-# ============================================================
-# END
-# ============================================================
+            """
+        )
